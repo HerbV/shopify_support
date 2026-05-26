@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}Rechnungsarchiv — Rechnungsverwaltung{% endblock %}
+
+{% block topbar %}
+<div class="topbar">
+    <h1>Rechnungsarchiv <span>LV</span></h1>
+    <div class="topbar-actions">
+        {% if invoices %}
+        <a href="/api/download-zip" class="btn btn-primary">📦 Alle als ZIP herunterladen</a>
+        <button class="btn btn-danger" id="btnClearArchive">🗑️ Archiv leeren</button>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="table-card">
+    <div class="table-card-header">
+        <div style="display:flex; align-items:center; gap: 12px;">
+            <h3>Erstellte Rechnungs-PDFs</h3>
+            <span class="badge-count">{{ invoices|length }}</span>
+        </div>
+        {% if invoices %}
+        <div class="search-box">
+            <span>🔍</span>
+            <input type="text" id="searchInput" placeholder="Archiv durchsuchen...">
+        </div>
+        {% endif %}
+    </div>
+    
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Belegnummer</th>
+                    <th>Dateiname</th>
+                    <th class="hide-mobile">Größe</th>
+                    <th class="hide-mobile">Erstellt am</th>
+                    <th style="text-align:center; width: 180px;">Aktionen</th>
+                </tr>
+            </thead>
+            <tbody id="archiveTableBody">
+                {% for inv in invoices %}
+                <tr data-name="{{ inv.name|lower }}">
+                    <td class="mono text-bold">{{ inv.beleg }}</td>
+                    <td class="text-sm">{{ inv.name }}</td>
+                    <td class="mono hide-mobile text-sm">{{ inv.size }} KB</td>
+                    <td class="text-sm hide-mobile">{{ inv.created }}</td>
+                    <td style="text-align:center;">
+                        <div style="display:flex; gap:6px; justify-content:center;">
+                            <a href="/api/invoices/{{ inv.name }}" class="btn btn-secondary btn-sm" target="_blank">📄 PDF</a>
+                            <button class="btn btn-danger btn-sm btn-delete" data-name="{{ inv.name }}">🗑️ Löschen</button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if not invoices %}
+<div class="table-card" style="padding: 60px; text-align: center; color: var(--gray-400); margin-top: 10px;">
+    <div style="font-size: 3rem; margin-bottom: 12px;">📁</div>
+    <h3>Bisher keine Rechnungen erstellt</h3>
+    <p style="margin-top: 8px; font-size: 0.9rem;">Gehe zur <a href="{{ url_for('index') }}" style="color:var(--honey-700); font-weight:500;">Rechnungserstellung</a>, um neue PDFs zu generieren.</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const searchInput = document.getElementById("searchInput");
+    const archiveTableBody = document.getElementById("archiveTableBody");
+    const btnClearArchive = document.getElementById("btnClearArchive");
+
+    // Real-time search filter
+    if (searchInput) {
+        searchInput.addEventListener("input", (e) => {
+            const query = e.target.value.toLowerCase().trim();
+            const rows = archiveTableBody.querySelectorAll("tr");
+            rows.forEach(row => {
+                const name = row.getAttribute("data-name");
+                if (name.includes(query)) {
+                    row.style.display = "";
+                } else {
+                    row.style.display = "none";
+                }
+            });
+        });
+    }
+
+    // Individual delete handler
+    const deleteButtons = document.querySelectorAll(".btn-delete");
+    deleteButtons.forEach(btn => {
+        btn.addEventListener("click", function() {
+            const name = this.getAttribute("data-name");
+            if (confirm(`Soll die Rechnung "${name}" wirklich gelöscht werden?`)) {
+                fetch(`/api/delete_invoice/${name}`, { method: "POST" })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        location.reload();
+                    } else {
+                        alert("Fehler beim Löschen: " + data.error);
+                    }
+                })
+                .catch(err => console.error(err));
+            }
+        });
+    });
+
+    // Clear whole archive handler
+    if (btnClearArchive) {
+        btnClearArchive.addEventListener("click", function() {
+            if (confirm("Möchtest du wirklich ALLE erstellten Rechnungen dauerhaft löschen? Dies kann nicht rückgängig gemacht werden!")) {
+                fetch("/api/clear_archive", { method: "POST" })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        location.reload();
+                    } else {
+                        alert("Fehler beim Leeren des Archivs: " + data.error);
+                    }
+                })
+                .catch(err => console.error(err));
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

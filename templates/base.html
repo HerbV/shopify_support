@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#FFCC00">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
+    <title>{% block title %}Rechnungsverwaltung{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&family=Ubuntu+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Logo-Farben (aus vereinsverwaltung kopiert) */
+            --honey-500: #FFCC00;
+            --honey-600: #E6B800;
+            --honey-700: #CC9900;
+            --honey-400: #FFD633;
+            --honey-300: #FFE066;
+            --honey-200: #FFEB99;
+            --honey-100: #FFF8E1;
+            --cream: #FFF5B8;
+            /* Dunkle Töne (vom Logo-Charcoal #231F20) */
+            --dark-900: #1A1714;
+            --dark-800: #231F20;
+            --dark-700: #332D28;
+            --dark-600: #4A423B;
+            --dark-500: #5C524A;
+            --dark-400: #7A6F65;
+            --dark-300: #A09487;
+            --dark-200: #C4B9AE;
+            /* Neutrale Grautöne (warm) */
+            --gray-900: #1A1A1A;
+            --gray-800: #333333;
+            --gray-700: #4A4A4A;
+            --gray-600: #666666;
+            --gray-400: #999999;
+            --gray-300: #D5CFC8;
+            --gray-200: #E4DFD8;
+            --gray-100: #F2EDE7;
+            --gray-50: #F9F6F2;
+            --white: #FFFFFF;
+            --green-600: #26A269;
+            --green-100: #DFF6E4;
+            --blue-600: #1C71D8;
+            --blue-100: #D3E5F5;
+            --red-600: #C01C28;
+            --red-100: #F8D7DA;
+            --brown-800: #5D4037;
+            --brown-600: #795548;
+            --sidebar-width: 260px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Ubuntu', 'Segoe UI', sans-serif;
+            background: var(--gray-100);
+            color: var(--gray-900);
+            display: flex;
+            min-height: 100vh;
+            font-size: 15px;
+        }
+
+        /* ── Sidebar ─────────────────────────────────── */
+        .sidebar {
+            width: var(--sidebar-width);
+            min-width: var(--sidebar-width);
+            background: linear-gradient(180deg, var(--dark-900), var(--dark-800));
+            color: var(--white);
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0; left: 0; bottom: 0;
+            z-index: 100;
+            overflow-y: auto;
+        }
+
+        .sidebar-header {
+            padding: 16px;
+            border-bottom: 1px solid var(--dark-600);
+            display: flex; align-items: center; gap: 12px;
+        }
+
+        .sidebar-logo {
+            width: 48px; height: 48px;
+            flex-shrink: 0;
+            border-radius: 6px;
+            object-fit: contain;
+        }
+
+        .logo-title {
+            font-weight: 700; font-size: 0.92rem;
+            color: var(--honey-400);
+        }
+        .logo-sub { font-size: 0.72rem; color: var(--dark-300); margin-top: 1px; }
+
+        .sidebar-section { padding: 12px 0; }
+        .section-label {
+            padding: 0 16px 8px;
+            font-size: 0.7rem; font-weight: 500;
+            text-transform: uppercase; letter-spacing: 0.08em;
+            color: var(--gray-300);
+        }
+
+        .nav-item {
+            display: flex; align-items: center; gap: 10px;
+            width: 100%; padding: 9px 16px;
+            border: none; background: transparent;
+            color: var(--dark-200); font-size: 0.88rem; font-weight: 400;
+            cursor: pointer; text-align: left; text-decoration: none;
+            border-left: 3px solid transparent;
+            font-family: 'Ubuntu', sans-serif;
+            transition: all 0.15s;
+        }
+        .nav-item:hover { background: rgba(255,204,0,0.08); color: var(--cream); }
+        .nav-item.active {
+            background: rgba(255,204,0,0.12);
+            color: var(--honey-300);
+            border-left-color: var(--honey-500);
+            font-weight: 500;
+        }
+
+        .nav-icon { display: flex; align-items: center; opacity: 0.8; width: 20px; }
+
+        .sidebar-footer {
+            margin-top: auto;
+            padding: 16px;
+            border-top: 1px solid var(--dark-600);
+            color: var(--dark-400); font-size: 0.75rem; text-align: center;
+        }
+
+        /* ── Main Content ────────────────────────────── */
+        .main {
+            flex: 1;
+            margin-left: var(--sidebar-width);
+            display: flex; flex-direction: column;
+        }
+
+        /* ── Top Bar ─────────────────────────────────── */
+        .topbar {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 14px 24px;
+            background: var(--white);
+            border-bottom: 1px solid var(--gray-200);
+            flex-wrap: wrap; gap: 12px;
+            position: sticky; top: 0; z-index: 50;
+        }
+
+        .topbar h1 {
+            font-size: 1.1rem; font-weight: 500;
+            color: var(--gray-800);
+        }
+        .topbar h1 span {
+            font-weight: 700; color: var(--honey-700);
+        }
+
+        .topbar-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+        /* ── Buttons ─────────────────────────────────── */
+        .btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 8px 16px; border-radius: 8px;
+            font-weight: 500; font-size: 0.88rem;
+            cursor: pointer; border: none;
+            font-family: 'Ubuntu', sans-serif;
+            text-decoration: none;
+            transition: all 0.15s;
+        }
+        .btn-primary {
+            background: var(--honey-600);
+            color: var(--dark-900);
+            font-weight: 600;
+        }
+        .btn-primary:hover { background: var(--honey-700); }
+        .btn-secondary {
+            background: var(--white); color: var(--gray-700);
+            border: 1px solid var(--gray-300);
+        }
+        .btn-secondary:hover { background: var(--gray-50); border-color: var(--gray-400); }
+        .btn-danger { background: var(--red-100); color: var(--red-600); border: 1px solid #F1AEB5; }
+        .btn-danger:hover { background: #F5C2C7; }
+        .btn-sm { padding: 5px 10px; font-size: 0.8rem; border-radius: 6px; }
+
+        /* ── Content ─────────────────────────────────── */
+        .content { flex: 1; padding: 20px 24px; display: flex; flex-direction: column; gap: 20px; }
+
+        /* ── Table Cards ─────────────────────────────── */
+        .table-card {
+            background: var(--white);
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            overflow: hidden;
+            border: 1px solid var(--gray-200);
+        }
+        .table-card-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 14px 20px;
+            background: var(--gray-50);
+            border-bottom: 1px solid var(--gray-200);
+        }
+        .table-card-header h3 {
+            margin: 0;
+            font-size: 1rem; font-weight: 500; color: var(--gray-800);
+        }
+        .badge-count {
+            background: var(--honey-500); color: var(--dark-900);
+            padding: 2px 10px; border-radius: 12px;
+            font-size: 0.75rem; font-weight: 600;
+        }
+
+        .table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+        th {
+            padding: 10px 14px; text-align: left;
+            font-weight: 500; font-size: 0.78rem;
+            text-transform: uppercase; letter-spacing: 0.03em;
+            color: var(--gray-600);
+            background: var(--gray-50);
+            border-bottom: 1px solid var(--gray-200);
+        }
+        td {
+            padding: 9px 14px;
+            border-bottom: 1px solid var(--gray-100);
+            vertical-align: middle;
+        }
+        tr:hover { background: var(--gray-50); }
+
+        .mono {
+            font-family: 'Ubuntu Mono', monospace;
+            font-size: 0.85rem; color: var(--gray-700);
+        }
+        .text-bold { font-weight: 500; }
+        .text-right { text-align: right; }
+
+        .total-bar {
+            display: flex; justify-content: space-between; align-items: center;
+            background: var(--white); padding: 16px 24px; border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            border: 2px solid var(--honey-500);
+        }
+        .total-bar .total-value {
+            font-weight: 700; font-size: 1.4rem;
+            color: var(--honey-700);
+        }
+
+        /* ── Flash Messages ──────────────────────────── */
+        .flash {
+            padding: 12px 20px; border-radius: 8px;
+            font-size: 0.88rem; font-weight: 400;
+        }
+        .flash-success { background: var(--green-100); color: var(--green-600); border: 1px solid #A3CFBB; }
+        .flash-error { background: var(--red-100); color: var(--red-600); border: 1px solid #F1AEB5; }
+
+        /* ── Hamburger Button (mobil) ────────────────── */
+        .hamburger {
+            display: none;
+            position: fixed; top: 10px; left: 10px; z-index: 51;
+            background: var(--white); border: 1px solid var(--gray-300);
+            border-radius: 8px; cursor: pointer;
+            padding: 8px 10px; font-size: 1.3rem; line-height: 1;
+            color: var(--gray-700);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .sidebar-backdrop {
+            display: none;
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.4);
+            z-index: 99;
+        }
+        .sidebar-backdrop.open { display: block; }
+
+        /* ── responsive ────────────────────────────── */
+        @media (max-width: 900px) {
+            .hamburger { display: block; }
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.25s ease;
+            }
+            .sidebar.open { transform: translateX(0); }
+            .main { margin-left: 0; }
+        }
+
+        .hide-mobile {
+            @media (max-width: 600px) {
+                display: none !important;
+            }
+        }
+        
+        /* ── Drag & Drop Uploader ────────────────────── */
+        .upload-zone {
+            border: 2px dashed var(--gray-300);
+            border-radius: 12px;
+            background: var(--white);
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+        }
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: var(--honey-500);
+            background: rgba(255, 204, 0, 0.02);
+        }
+        .upload-icon {
+            font-size: 3rem;
+            color: var(--honey-500);
+        }
+        .upload-title {
+            font-size: 1.1rem;
+            font-weight: 500;
+            color: var(--gray-800);
+        }
+        .upload-subtitle {
+            font-size: 0.82rem;
+            color: var(--gray-400);
+        }
+        
+        /* Search Box */
+        .search-box {
+            display: flex; align-items: center; gap: 8px;
+            background: var(--gray-50);
+            border: 1px solid var(--gray-300);
+            border-radius: 8px; padding: 7px 14px;
+        }
+        .search-box input {
+            border: none; background: transparent; outline: none;
+            font-size: 0.88rem; font-family: 'Ubuntu', sans-serif;
+            color: var(--gray-900); width: 220px;
+        }
+        
+        /* Badges */
+        .badge-warning-flag {
+            display: inline-block;
+            background: var(--red-100);
+            color: var(--red-600);
+            border: 1px solid #F1AEB5;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.72rem;
+            font-weight: 600;
+        }
+        .badge-active-flag {
+            display: inline-block;
+            background: var(--green-100);
+            color: var(--green-600);
+            border: 1px solid #A3CFBB;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.72rem;
+            font-weight: 600;
+        }
+        
+        /* Live Progress Bar */
+        .progress-container {
+            display: none;
+            background: var(--white);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            border: 1px solid var(--gray-200);
+            flex-direction: column;
+            gap: 10px;
+        }
+        .progress-bar-wrap {
+            width: 100%;
+            background: var(--gray-100);
+            height: 12px;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .progress-bar-fill {
+            background: linear-gradient(90deg, var(--honey-500), var(--honey-600));
+            width: 0%;
+            height: 100%;
+            transition: width 0.15s ease-out;
+        }
+        .progress-text {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.88rem;
+            font-weight: 500;
+            color: var(--gray-700);
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="sidebar-logo">
+            <div>
+                <div class="logo-title">OÖ Landesverband</div>
+                <div class="logo-sub">für Bienenzucht</div>
+            </div>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="section-label">Menü</div>
+            <a href="{{ url_for('index') }}" class="nav-item {% if request.endpoint == 'index' %}active{% endif %}">
+                <span class="nav-icon">🧾</span> Rechnungserstellung
+            </a>
+            <a href="{{ url_for('archive') }}" class="nav-item {% if request.endpoint == 'archive' %}active{% endif %}">
+                <span class="nav-icon">📁</span> Rechnungsarchiv
+            </a>
+        </div>
+
+        <div class="sidebar-footer">
+            Rechnungsverwaltung v2.0 — Webapp
+        </div>
+    </aside>
+
+    <!-- Sidebar Backdrop (mobil) -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <!-- Main Content -->
+    <div class="main">
+        <!-- Hamburger (nur auf Mobilgeräten sichtbar) -->
+        <button class="hamburger" id="hamburgerBtn" aria-label="Menü öffnen">☰</button>
+
+        {% block topbar %}{% endblock %}
+
+        <div class="content">
+            <!-- Flash Messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="flash flash-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+            {% endwith %}
+
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        var btn = document.getElementById('hamburgerBtn');
+        var sidebar = document.querySelector('.sidebar');
+        var backdrop = document.getElementById('sidebarBackdrop');
+        function toggle() {
+            sidebar.classList.toggle('open');
+            backdrop.classList.toggle('open');
+        }
+        btn.addEventListener('click', toggle);
+        backdrop.addEventListener('click', toggle);
+    })();
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

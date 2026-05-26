@@ -1,0 +1,26 @@
+# Secrets / Konfiguration – NIEMALS committen
+env
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+
+# Kundendaten & generierte Artefakte (Datenschutz)
+Rechnungen/
+Rechnungen_Erstellt/
+temp_uploads/
+static/logo.png
+*.pdf
+*.zip
+*.csv
+*.xlsx
+
+# Editor / Tooling
+.claude/
+.gemini/
+.DS_Store

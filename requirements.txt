@@ -1,0 +1,8 @@
+Flask
+pyodbc
+requests
+python-dotenv
+pdfplumber
+openpyxl
+qrcode
+jinja2

@@ -1,0 +1,584 @@
+{% extends "base.html" %}
+{% block title %}Rechnungserstellung — Rechnungsverwaltung{% endblock %}
+
+{% block topbar %}
+<div class="topbar">
+    <h1>Rechnungserstellung <span>LV</span></h1>
+    <div class="topbar-actions" id="topbarActions" style="display:none;">
+        <button class="btn btn-primary" id="btnGenerate">⚡ Rechnungen generieren</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Direct Shopify API Fetch Container -->
+<div id="apiTabContent">
+    <div style="background: var(--white); border-radius: 12px; border: 1px solid var(--gray-200); padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
+        <h3 style="margin-bottom: 16px; font-weight: 500; color: var(--gray-800); display: flex; align-items: center; gap: 8px;">
+            <span>🐝</span> Shopify Admin API Abruf
+        </h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px;">
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+                <label style="font-size: 0.85rem; font-weight: 500; color: var(--gray-600);">Startdatum</label>
+                <input type="date" id="apiStartDate" style="padding: 9px 12px; border: 1px solid var(--gray-300); border-radius: 8px; outline: none; font-family: 'Ubuntu', sans-serif; font-size: 0.9rem;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+                <label style="font-size: 0.85rem; font-weight: 500; color: var(--gray-600);">Enddatum</label>
+                <input type="date" id="apiEndDate" style="padding: 9px 12px; border: 1px solid var(--gray-300); border-radius: 8px; outline: none; font-family: 'Ubuntu', sans-serif; font-size: 0.9rem;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+                <label style="font-size: 0.85rem; font-weight: 500; color: var(--gray-600);">Zahlungsstatus</label>
+                <select id="apiStatus" style="padding: 9px 12px; border: 1px solid var(--gray-300); border-radius: 8px; outline: none; font-family: 'Ubuntu', sans-serif; font-size: 0.9rem; background: white;">
+                    <option value="any">Alle (Paid & Unpaid)</option>
+                    <option value="paid">Nur Bezahlt (Paid)</option>
+                    <option value="unpaid">Nur Offen (Unpaid)</option>
+                </select>
+            </div>
+        </div>
+        <div style="display: flex; justify-content: flex-end;">
+            <button class="btn btn-primary" id="btnApiFetch" style="font-weight: 600;">Bestellungen abrufen</button>
+        </div>
+    </div>
+</div>
+
+<!-- Live Progress Indicator -->
+<div class="progress-container" id="progressContainer">
+    <div class="progress-text">
+        <span id="progressLabel">Generiere Rechnungen...</span>
+        <span id="progressPercent">0%</span>
+    </div>
+    <div class="progress-bar-wrap">
+        <div class="progress-bar-fill" id="progressBarFill"></div>
+    </div>
+    <div style="font-size: 0.8rem; color: var(--gray-400); margin-top: 4px;" id="progressDetail">
+        Verarbeite...
+    </div>
+</div>
+
+<!-- Interactive Orders List Card (Initially Hidden) -->
+<div class="table-card" id="ordersCard" style="display:none; margin-top: 20px;">
+    <div class="table-card-header">
+        <div style="display:flex; align-items:center; gap: 12px;">
+            <h3>Importierte Bestellungen</h3>
+            <span class="badge-count" id="ordersCount">0</span>
+        </div>
+        <div style="display:flex; align-items:center; gap: 16px;">
+            <div class="search-box">
+                <span>🔍</span>
+                <input type="text" id="searchInput" placeholder="Suchen nach Name, KdNr, Betrag...">
+            </div>
+            <button class="btn btn-secondary btn-sm" id="btnDeselectAll">❌ Alle abwählen</button>
+            <button class="btn btn-secondary btn-sm" id="btnSelectAll">✓ Alle auswählen</button>
+        </div>
+    </div>
+    
+    <!-- Category filter chips -->
+    <div id="categoryFilter" style="display:flex; flex-wrap:wrap; gap:8px; padding:0 16px 14px; border-bottom:1px solid var(--gray-200);">
+        <!-- Populated dynamically via JS -->
+    </div>
+
+    <div class="table-wrap">
+        <table id="ordersTable">
+            <thead>
+                <tr>
+                    <th style="width: 40px; text-align: center;"><input type="checkbox" id="headerCheckbox" checked></th>
+                    <th>Bestellnr.</th>
+                    <th>Kunde</th>
+                    <th>Produkt</th>
+                    <th>Liefertermin</th>
+                </tr>
+            </thead>
+            <tbody id="ordersTableBody">
+                <!-- Will be dynamically populated via JS -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Total selected sum bar (Initially Hidden) -->
+<div class="total-bar" id="totalBar" style="display:none; margin-top: 15px;">
+    <span style="font-weight: 500; color: var(--gray-700);" id="totalBarLabel">Gesamtsumme (0 Rechnungen ausgewählt)</span>
+    <span class="total-value" id="totalBarValue">€ 0,00</span>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const ordersCard = document.getElementById("ordersCard");
+    const ordersTableBody = document.getElementById("ordersTableBody");
+    const ordersCount = document.getElementById("ordersCount");
+    const searchInput = document.getElementById("searchInput");
+    const totalBar = document.getElementById("totalBar");
+    const totalBarLabel = document.getElementById("totalBarLabel");
+    const totalBarValue = document.getElementById("totalBarValue");
+    const topbarActions = document.getElementById("topbarActions");
+    const btnGenerate = document.getElementById("btnGenerate");
+    const progressContainer = document.getElementById("progressContainer");
+    const progressBarFill = document.getElementById("progressBarFill");
+    const progressPercent = document.getElementById("progressPercent");
+    const progressLabel = document.getElementById("progressLabel");
+    const progressDetail = document.getElementById("progressDetail");
+    const headerCheckbox = document.getElementById("headerCheckbox");
+    const btnSelectAll = document.getElementById("btnSelectAll");
+    const btnDeselectAll = document.getElementById("btnDeselectAll");
+
+    // API fetch elements
+    const btnApiFetch = document.getElementById("btnApiFetch");
+    const apiStartDate = document.getElementById("apiStartDate");
+    const apiEndDate = document.getElementById("apiEndDate");
+    const apiStatus = document.getElementById("apiStatus");
+
+    // Category filter
+    const categoryFilter = document.getElementById("categoryFilter");
+
+    let allOrders = [];
+    let currentCategory = "all";
+    let currentTermin = null;
+
+    const CATEGORY_META = {
+        all:      { label: "Alle",             test: () => true },
+        koenigin: { label: "👑 Königinnen",    test: o => (o.categories || []).includes("koenigin") },
+        umlarv:   { label: "🔬 Umlarvaktionen", test: o => (o.categories || []).includes("umlarv") },
+        auffahrt: { label: "🚚 Auffahrten",    test: o => (o.categories || []).includes("auffahrt") },
+    };
+
+    // Pre-populate default dates (last 7 days to today)
+    const today = new Date();
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(today.getDate() - 7);
+    
+    apiEndDate.value = today.toISOString().substring(0, 10);
+    apiStartDate.value = sevenDaysAgo.toISOString().substring(0, 10);
+
+    // Shopify Admin API Fetch Handler
+    btnApiFetch.addEventListener("click", () => {
+        const startDate = apiStartDate.value;
+        const endDate = apiEndDate.value;
+        const status = apiStatus.value;
+
+        if (!startDate || !endDate) {
+            alert("Bitte wählen Sie sowohl ein Start- als auch ein Enddatum aus.");
+            return;
+        }
+
+        // Reset UI elements
+        ordersCard.style.display = "none";
+        totalBar.style.display = "none";
+        topbarActions.style.display = "none";
+        progressContainer.style.display = "none";
+
+        // Show loading state
+        btnApiFetch.disabled = true;
+        btnApiFetch.textContent = "Abrufen...";
+        btnApiFetch.style.opacity = "0.7";
+
+        fetch("/api/shopify/fetch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                start_date: startDate,
+                end_date: endDate,
+                status: status
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            btnApiFetch.disabled = false;
+            btnApiFetch.textContent = "Bestellungen abrufen";
+            btnApiFetch.style.opacity = "1";
+
+            if (data.error) {
+                alert("Fehler beim Abrufen: " + data.error);
+                return;
+            }
+
+            allOrders = data.orders;
+
+            renderOrders(allOrders);
+            ordersCard.style.display = "block";
+            totalBar.style.display = "flex";
+            topbarActions.style.display = "flex";
+        })
+        .catch(err => {
+            btnApiFetch.disabled = false;
+            btnApiFetch.textContent = "Bestellungen abrufen";
+            btnApiFetch.style.opacity = "1";
+            alert("Verbindungsfehler beim Abrufen der Shopify-Daten.");
+            console.error(err);
+        });
+    });
+
+    function formatMoney(val) {
+        return parseFloat(val).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    }
+
+    // Builds a clickable chip element
+    function makeChip(label, active, onClick) {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.textContent = label;
+        chip.style.cssText =
+            "padding:6px 14px; border-radius:999px; cursor:pointer; font-family:'Ubuntu',sans-serif; " +
+            "font-size:0.85rem; font-weight:600; transition:all 0.15s; " +
+            (active
+                ? "background:var(--honey-500); color:#fff; border:1px solid var(--honey-500);"
+                : "background:var(--white); color:var(--gray-700); border:1px solid var(--gray-300);");
+        chip.addEventListener("click", onClick);
+        return chip;
+    }
+
+    // Sorts termin labels chronologically (e.g. "27.5. Linz" before "10.6. ...")
+    function terminSortKey(t) {
+        const m = t.match(/(\d{1,2})\.(\d{1,2})\./);
+        return m ? parseInt(m[2]) * 100 + parseInt(m[1]) : 9999;
+    }
+
+    // Renders the category filter chips (and Umlarv termin sub-chips)
+    function buildCategoryChips() {
+        categoryFilter.innerHTML = "";
+
+        const mainRow = document.createElement("div");
+        mainRow.style.cssText = "display:flex; flex-wrap:wrap; gap:8px; width:100%;";
+        categoryFilter.appendChild(mainRow);
+
+        Object.keys(CATEGORY_META).forEach(key => {
+            const count = key === "all"
+                ? allOrders.length
+                : allOrders.filter(CATEGORY_META[key].test).length;
+            if (key !== "all" && count === 0) return;
+            const chip = makeChip(`${CATEGORY_META[key].label} (${count})`, currentCategory === key, () => {
+                currentCategory = key;
+                currentTermin = null;
+                buildCategoryChips();
+                applyFilters();
+            });
+            mainRow.appendChild(chip);
+        });
+
+        // Termin sub-chips, only while the Umlarv category is active
+        if (currentCategory === "umlarv") {
+            const termine = {};
+            allOrders.forEach(o => (o.umlarv_termine || []).forEach(t => {
+                termine[t] = (termine[t] || 0) + 1;
+            }));
+            const sorted = Object.keys(termine).sort((a, b) => terminSortKey(a) - terminSortKey(b));
+            if (sorted.length) {
+                const subRow = document.createElement("div");
+                subRow.style.cssText =
+                    "display:flex; flex-wrap:wrap; gap:6px; width:100%; margin-top:4px; " +
+                    "padding-left:12px; border-left:3px solid var(--honey-200, #FDE68A);";
+                subRow.appendChild(makeChip(`Alle Termine (${allOrders.filter(CATEGORY_META.umlarv.test).length})`,
+                    currentTermin === null, () => { currentTermin = null; buildCategoryChips(); applyFilters(); }));
+                sorted.forEach(t => {
+                    subRow.appendChild(makeChip(`${t} (${termine[t]})`, currentTermin === t,
+                        () => { currentTermin = t; buildCategoryChips(); applyFilters(); }));
+                });
+                categoryFilter.appendChild(subRow);
+            }
+        }
+    }
+
+    // Returns true if an order passes the active category + termin filter
+    function passesCategory(order) {
+        if (!CATEGORY_META[currentCategory].test(order)) return false;
+        if (currentCategory === "umlarv" && currentTermin) {
+            return (order.umlarv_termine || []).includes(currentTermin);
+        }
+        return true;
+    }
+
+    // Start time (minutes since midnight) of an Umlarv slot, for sorting; large if none.
+    function itemMin(item) {
+        const m = ((item && item.variant) || "").match(/(\d{1,2}):(\d{2})/);
+        return m ? parseInt(m[1]) * 60 + parseInt(m[2]) : 99999;
+    }
+
+    // Line items shown for an order, limited to active category/termin (Versand raus).
+    function shownItems(order) {
+        let its = (order.items || []).filter(it => it.artikelnr !== "109008");
+        if (currentCategory !== "all") its = its.filter(it => it.category === currentCategory);
+        if (currentCategory === "umlarv" && currentTermin)
+            its = its.filter(it => it.umlarv_termin === currentTermin);
+        return its;
+    }
+
+    // Builds one table row for order `idx` showing the given positions.
+    function buildRow(idx, items) {
+        const order = allOrders[idx];
+        const tr = document.createElement("tr");
+        tr.className = "order-row";
+        tr.dataset.idx = idx;
+        tr.setAttribute("data-order-name", order.order_name);
+
+        const isZero = order.total_brutto < 0.01;
+        if (isZero) {
+            tr.style.opacity = "0.65";
+        } else if (order.member_missing_discount) {
+            // Mitglied ohne Rabatt: dezent rot markieren (Hinweis für die Rechnung)
+            tr.style.backgroundColor = "#FDF2F2";
+            tr.style.borderLeft = "4px solid #EF4444";
+        }
+        const checkedAttr = isZero ? "" : "checked";
+        const produkte = items.length
+            ? items.map(it => shortProduct(it.name)).join("<br>")
+            : '<em style="color:var(--gray-400)">—</em>';
+        const termine = items.length
+            ? items.map(it => lieferTermin(it)).join("<br>")
+            : "—";
+
+        tr.innerHTML = `
+            <td style="text-align: center; vertical-align: top;"><input type="checkbox" class="order-chk" data-idx="${idx}" ${checkedAttr}></td>
+            <td class="mono text-bold" style="vertical-align: top;">${order.order_name}</td>
+            <td style="vertical-align: top;">${order.b_name || '<em style="color:var(--gray-400)">unbekannt</em>'}</td>
+            <td class="cell-produkt" style="vertical-align: top;">${produkte}</td>
+            <td class="cell-termin mono text-sm" style="vertical-align: top; white-space: nowrap;">${termine}</td>
+        `;
+        return tr;
+    }
+
+    // (Re)builds the table body for the active category/termin/search.
+    //  - In a specific category: ONE row per position, so each Umlarv slot sorts
+    //    by its own time (an order with two slots becomes two correctly-placed rows).
+    //  - In "Alle": one row per order with its positions stacked.
+    function applyFilters() {
+        const query = searchInput.value.toLowerCase().trim();
+        const entries = [];
+
+        allOrders.forEach((order, idx) => {
+            if (!passesCategory(order)) return;
+            const text = `${order.order_name} ${order.b_name} ${order.kdnr}`.toLowerCase();
+            if (!text.includes(query)) return;
+
+            const its = shownItems(order);
+            if (currentCategory === "all" || its.length === 0) {
+                entries.push({ idx, items: its });
+            } else {
+                its.forEach(it => entries.push({ idx, items: [it] }));
+            }
+        });
+
+        if (currentCategory === "umlarv") {
+            entries.sort((a, b) => itemMin(a.items[0]) - itemMin(b.items[0]) || a.idx - b.idx);
+        } else {
+            entries.sort((a, b) => a.idx - b.idx);
+        }
+
+        // Preserve the current per-order selection across rebuilds.
+        const hadRows = ordersTableBody.querySelector(".order-chk") !== null;
+        const checkedIdx = new Set(
+            Array.from(ordersTableBody.querySelectorAll(".order-chk:checked")).map(c => c.dataset.idx)
+        );
+
+        ordersTableBody.innerHTML = "";
+        entries.forEach(e => {
+            const row = buildRow(e.idx, e.items);
+            if (hadRows) row.querySelector(".order-chk").checked = checkedIdx.has(String(e.idx));
+            ordersTableBody.appendChild(row);
+        });
+
+        ordersCount.textContent = entries.length;
+        updateTotalBar();
+    }
+
+    // Compact delivery date for a line item, derived from its variant.
+    function lieferTermin(item) {
+        const v = (item.variant || "").trim();
+        if (/Anlieferung/i.test(v)) {                                                  // Auffahrt
+            const m = v.match(/(\d{1,2}\.\d{1,2}\.\d{2,4})[^\d]+(\d{1,2}\.\d{1,2}\.\d{2,4})/);
+            return m ? `An ${m[1]} → Ab ${m[2]}` : v;
+        }
+        if (/^\d{1,2}\.\d{1,2}\.\d{2,4}$/.test(v)) return v;                            // Königin: Datum
+        if (/^\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}$/.test(v)) return v;                    // Umlarv: nur Uhrzeit
+        return v || item.termin || "—";
+    }
+
+    // Shortens long product titles to a compact label.
+    function shortProduct(name) {
+        const n = (name || "").toLowerCase();
+        if (n.includes("umlarv"))       return "Umlarvaktion";
+        if (n.includes("auffahrt"))     return "Belegstellen-Auffahrt";
+        if (n.includes("wirtschaft"))   return "Wirtschaftskönigin";
+        if (n.includes("zac"))          return "Königin (ZAC)";
+        if (n.includes("norderney"))    return "Königin Norderney";
+        if (n.includes("unbegatte"))    return "Unbegattete SMR-Königin";
+        if (n.includes("offensee"))     return "SMR-Königin Offensee";
+        if (n.includes("königin") || n.includes("koenigin")) return "Königin";
+        return name;
+    }
+
+    // Keeps every row of the same order in sync (an order can span multiple rows).
+    function syncOrderSelection(idx, checked) {
+        ordersTableBody.querySelectorAll(`.order-chk[data-idx="${idx}"]`)
+            .forEach(c => { c.checked = checked; });
+    }
+
+    // Event delegation for the (re-built) order rows
+    ordersTableBody.addEventListener("change", (e) => {
+        if (e.target.classList.contains("order-chk")) {
+            syncOrderSelection(e.target.dataset.idx, e.target.checked);
+            updateTotalBar();
+        }
+    });
+    ordersTableBody.addEventListener("click", (e) => {
+        if (e.target.tagName === "INPUT") return;
+        const row = e.target.closest("tr.order-row");
+        if (!row) return;
+        const chk = row.querySelector(".order-chk");
+        chk.checked = !chk.checked;
+        syncOrderSelection(chk.dataset.idx, chk.checked);
+        updateTotalBar();
+    });
+
+    // Renders the list of orders (called after a fetch; allOrders is already set)
+    function renderOrders() {
+        currentCategory = "all";
+        currentTermin = null;
+        ordersTableBody.innerHTML = "";
+        buildCategoryChips();
+        applyFilters();
+    }
+
+    // Recalculates selected sum and counts in real-time (deduped per order)
+    function updateTotalBar() {
+        const seen = new Set();
+        let selectedCount = 0;
+        let selectedSum = 0;
+
+        document.querySelectorAll(".order-chk").forEach(chk => {
+            const row = chk.closest("tr");
+            if (chk.checked && row && row.style.display !== "none") {
+                const idx = chk.getAttribute("data-idx");
+                if (!seen.has(idx)) {
+                    seen.add(idx);
+                    selectedSum += allOrders[+idx].total_brutto;
+                    selectedCount++;
+                }
+            }
+        });
+
+        totalBarLabel.textContent = `Gesamtsumme (${selectedCount} Rechnungen ausgewählt)`;
+        totalBarValue.textContent = `€ ${formatMoney(selectedSum)}`;
+        
+        btnGenerate.disabled = (selectedCount === 0);
+        btnGenerate.style.opacity = (selectedCount === 0) ? "0.5" : "1";
+    }
+
+    // Returns currently visible checkboxes (respecting the active filter)
+    function visibleCheckboxes() {
+        return Array.from(document.querySelectorAll(".order-chk"))
+            .filter(chk => { const r = chk.closest("tr"); return r && r.style.display !== "none"; });
+    }
+
+    // Select/Deselect all handlers (operate on the visible/filtered rows)
+    headerCheckbox.addEventListener("change", (e) => {
+        visibleCheckboxes().forEach(chk => {
+            const idx = parseInt(chk.getAttribute("data-idx"));
+            const isZero = allOrders[idx].total_brutto < 0.01;
+            // Zero-value orders remain unchecked by default on select all
+            if (!isZero || !e.target.checked) {
+                chk.checked = e.target.checked;
+            }
+        });
+        updateTotalBar();
+    });
+
+    btnSelectAll.addEventListener("click", () => {
+        visibleCheckboxes().forEach(chk => { chk.checked = true; });
+        headerCheckbox.checked = true;
+        updateTotalBar();
+    });
+
+    btnDeselectAll.addEventListener("click", () => {
+        visibleCheckboxes().forEach(chk => { chk.checked = false; });
+        headerCheckbox.checked = false;
+        updateTotalBar();
+    });
+
+    // Real-time search filter (combined with the category filter)
+    searchInput.addEventListener("input", () => {
+        applyFilters();
+    });
+
+    // Generate PDFs using sequential step-by-step execution to provide live status updates
+    btnGenerate.addEventListener("click", async () => {
+        // Unique order indices among checked rows (an order may span several rows)
+        const selectedIndexes = [...new Set(
+            visibleCheckboxes().filter(chk => chk.checked).map(chk => parseInt(chk.getAttribute("data-idx")))
+        )];
+
+        if (selectedIndexes.length === 0) return;
+
+        // Hide list during generation
+        ordersCard.style.display = "none";
+        totalBar.style.display = "none";
+        topbarActions.style.display = "none";
+
+        progressContainer.style.display = "flex";
+        progressBarFill.style.width = "0%";
+        progressPercent.textContent = "0%";
+        progressLabel.textContent = `Generiere Rechnungen (0 / ${selectedIndexes.length})...`;
+
+        let successCount = 0;
+        let failCount = 0;
+
+        // Get initial sequence numbers
+        let sequenceResponse = await fetch("/api/sequences");
+        let seqData = await sequenceResponse.json();
+        let nextBeleg = seqData.next_beleg;
+        let nextVorgang = seqData.next_vorgang;
+
+        for (let i = 0; i < selectedIndexes.length; i++) {
+            const idx = selectedIndexes[i];
+            const order = allOrders[idx];
+
+            progressLabel.textContent = `Generiere Rechnungen (${i} / ${selectedIndexes.length})...`;
+            progressDetail.textContent = `Verarbeite: ${order.order_name} für ${order.b_name || 'unbekannt'}...`;
+
+            try {
+                const response = await fetch("/api/generate_single", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        order: order,
+                        next_beleg: nextBeleg,
+                        next_vorgang: nextVorgang
+                    })
+                });
+                
+                const resData = await response.json();
+                if (resData.success) {
+                    successCount++;
+                    nextBeleg++;
+                    nextVorgang++;
+                } else {
+                    failCount++;
+                }
+            } catch (err) {
+                console.error(err);
+                failCount++;
+            }
+
+            // Update Progress bar
+            const percent = Math.round(((i + 1) / selectedIndexes.length) * 100);
+            progressBarFill.style.width = `${percent}%`;
+            progressPercent.textContent = `${percent}%`;
+        }
+
+        // Finished! Show summary
+        progressLabel.textContent = "Fertiggestellt!";
+        progressDetail.innerHTML = `
+            <strong>${successCount}</strong> Rechnungen erfolgreich erstellt. ${failCount > 0 ? `<span style="color:var(--red-600)">${failCount} fehlgeschlagen.</span>` : ''}
+            <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center;">
+                <a href="/archiv" class="btn btn-primary btn-sm">📁 Zum Archiv wechseln</a>
+                <button class="btn btn-secondary btn-sm" id="btnRestart">🔄 Neuen Export laden</button>
+            </div>
+        `;
+
+        document.getElementById("btnRestart").addEventListener("click", () => {
+            location.reload();
+        });
+    });
+});
+</script>
+{% endblock %}

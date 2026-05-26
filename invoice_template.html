@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Rechnung {{ belegnummer }}</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        @page {
+            size: A4;
+            margin: 12mm 20mm 15mm 20mm;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            font-size: 11px;
+            line-height: 1.4;
+            color: #1a1a1a;
+            margin: 0;
+            padding: 0;
+            padding-top: 53mm; /* Pushes content down to match 65mm top position */
+            background-color: #ffffff;
+            -webkit-print-color-adjust: exact;
+            position: relative;
+        }
+
+        /* Header Styles (Logo & QR) */
+        .header-right {
+            position: absolute;
+            top: -4mm;
+            right: 0;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 5mm;
+        }
+
+        .logo-container img {
+            width: 30mm;
+            height: auto;
+            display: block;
+        }
+
+        .header-qr-container {
+            border: 0.5px solid #cccccc;
+            padding: 3px;
+            border-radius: 4px;
+            background: #ffffff;
+            width: 30mm;
+            text-align: center;
+        }
+
+        .header-qr-container img {
+            width: 18mm;
+            height: 18mm;
+            display: block;
+            margin: 0 auto;
+        }
+
+        /* Sender top border line */
+        .sender-header-line {
+            font-size: 8px;
+            color: #666666;
+            border-bottom: 0.5px solid #cccccc;
+            padding-bottom: 3px;
+            margin-bottom: 25px;
+            letter-spacing: 0.2px;
+        }
+
+        /* Top Layout: Recipient Address & Info block */
+        .top-container {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 35px;
+        }
+
+        .address-block {
+            width: 55%;
+            font-size: 11px;
+            padding-top: 10px;
+        }
+
+        .address-block div {
+            margin-bottom: 2px;
+        }
+
+        .info-block {
+            width: 40%;
+            text-align: right;
+        }
+
+        .info-block h1 {
+            font-size: 24px;
+            font-weight: 700;
+            margin: 0 0 10px 0;
+            color: #000000;
+            letter-spacing: -0.5px;
+        }
+
+        .info-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+            margin-left: auto;
+        }
+
+        .info-table td {
+            padding: 3px 0;
+            vertical-align: top;
+        }
+
+        .info-table td.label {
+            color: #555555;
+            text-align: left;
+            padding-right: 15px;
+            font-weight: 500;
+        }
+
+        .info-table td.value {
+            font-weight: 600;
+            text-align: right;
+            color: #000000;
+        }
+
+        .info-subtext {
+            font-size: 8px;
+            color: #666666;
+            margin-top: 5px;
+            font-weight: 500;
+        }
+
+        /* Metadaten Leiste (Versandart, etc.) */
+        .metadata-container {
+            display: flex;
+            flex-wrap: wrap;
+            border-top: 1px solid #000000;
+            border-bottom: 1px solid #000000;
+            padding: 8px 0;
+            margin-bottom: 25px;
+        }
+
+        .metadata-item {
+            width: 25%;
+            font-size: 10px;
+            margin-bottom: 4px;
+        }
+
+        .metadata-item .label {
+            color: #666666;
+            font-weight: 500;
+            margin-bottom: 1px;
+        }
+
+        .metadata-item .value {
+            font-weight: 600;
+            color: #000000;
+        }
+
+        /* Artikeltabelle */
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+
+        .items-table th {
+            font-size: 10px;
+            font-weight: 600;
+            color: #555555;
+            border-bottom: 1px solid #000000;
+            padding: 6px 4px;
+            text-align: left;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .items-table td {
+            border-bottom: 0.5px solid #e5e5e5;
+            padding: 8px 4px;
+            vertical-align: top;
+            font-size: 11px;
+        }
+
+        .items-table td.pos { width: 4%; text-align: left; color: #666666; }
+        .items-table td.artnr { width: 10%; text-align: left; color: #666666; }
+        .items-table td.bezeichnung { width: 46%; text-align: left; font-weight: 500; }
+        .items-table td.termin { width: 12%; text-align: left; }
+        .items-table td.menge { width: 8%; text-align: right; }
+        .items-table td.einzelpreis { width: 10%; text-align: right; }
+        .items-table td.gesamtpreis { width: 10%; text-align: right; font-weight: 600; }
+        .items-table td.sc { width: 4%; text-align: right; color: #666666; }
+
+        .items-table th.right, .items-table td.right {
+            text-align: right;
+        }
+
+        .item-details {
+            font-size: 9.5px;
+            color: #666666;
+            margin-top: 3px;
+            white-space: pre-wrap;
+            line-height: 1.3;
+        }
+
+        /* Summen- und Steuerblock */
+        .totals-container {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 15px;
+            margin-bottom: 30px;
+            page-break-inside: avoid;
+        }
+
+        .totals-block {
+            width: 45%;
+        }
+
+        .totals-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+        }
+
+        .totals-table td {
+            padding: 4px 0;
+            vertical-align: middle;
+        }
+
+        .totals-table tr.zwischensumme td {
+            border-bottom: 0.5px solid #cccccc;
+            padding-bottom: 6px;
+        }
+
+        .totals-table tr.mwst td {
+            font-size: 10px;
+            color: #555555;
+            padding: 3px 0;
+        }
+
+        .totals-table tr.endsumme td {
+            border-top: 1px solid #000000;
+            border-bottom: 2px double #000000;
+            font-size: 14px;
+            font-weight: 700;
+            padding-top: 8px;
+            padding-bottom: 8px;
+            color: #000000;
+        }
+
+        .totals-table td.label {
+            text-align: left;
+            font-weight: 500;
+        }
+
+        .totals-table td.value {
+            text-align: right;
+            font-weight: 600;
+        }
+
+        .totals-table tr.endsumme td.value {
+            font-weight: 700;
+        }
+
+        /* Notes und Footer */
+        .notes-block {
+            margin-bottom: 30px;
+            font-size: 10px;
+            color: #555555;
+            background-color: #fcfcfc;
+            border: 0.5px solid #eeeeee;
+            padding: 10px;
+            border-radius: 4px;
+            page-break-inside: avoid;
+        }
+
+        .notes-title {
+            font-weight: 600;
+            margin-bottom: 4px;
+            color: #333333;
+        }
+
+        .payment-info {
+            font-size: 11px;
+            line-height: 1.5;
+            margin-bottom: 40px;
+            font-weight: 500;
+            page-break-inside: avoid;
+        }
+
+        .payment-info .highlight {
+            font-weight: 600;
+            color: #000000;
+        }
+
+        /* Brief-Footer */
+        .page-footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            border-top: 0.5px solid #cccccc;
+            padding-top: 8px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 8px;
+            color: #666666;
+            line-height: 1.4;
+        }
+
+        .footer-col {
+            width: 24%;
+        }
+
+        .footer-col-strong {
+            font-weight: 600;
+            color: #333333;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header Right (Logo & QR-Code Zahlungshilfe) -->
+    <div class="header-right">
+        {% if qr_path %}
+        <div class="header-qr-container">
+            <img src="{{ qr_path }}" alt="Zahlungs-QR-Code">
+            <div style="font-size: 5px; color: #1a1a1a; font-weight: 700; text-transform: uppercase; margin-top: 2px; letter-spacing: 0.2px;">Zahlungshilfe</div>
+            <div style="font-size: 4.5px; color: #555555; line-height: 1.1; margin-top: 1px;">Mit Banking-App scannen für einfache Überweisung</div>
+        </div>
+        {% endif %}
+        {% if logo_path %}
+        <div class="logo-container">
+            <img src="{{ logo_path }}" alt="Logo">
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Upper small sender header line -->
+    <div class="sender-header-line">
+        {{ sender_line }}
+    </div>
+
+    <!-- Recipient and Invoice Metadata -->
+    <div class="top-container">
+        <div class="address-block">
+            {% for line in customer_address %}
+                {% if line %}
+                    <div>{{ line }}</div>
+                {% endif %}
+            {% endfor %}
+        </div>
+        
+        <div class="info-block">
+            <h1>{{ title }}</h1>
+            <table class="info-table">
+                <tr>
+                    <td class="label">Vorgangsnummer</td>
+                    <td class="value">{{ vorgangsnummer }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Belegnummer</td>
+                    <td class="value">{{ belegnummer }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Datum</td>
+                    <td class="value">{{ datum }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Kundennummer</td>
+                    <td class="value">{{ kundennummer }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Bearbeiter</td>
+                    <td class="value">{{ bearbeiter }}</td>
+                </tr>
+            </table>
+            <div class="info-subtext">Bitte bei allen Rückfragen angeben!</div>
+        </div>
+    </div>
+
+    <!-- Metadaten Leiste (Versandart, etc.) -->
+    <div class="metadata-container">
+        <div class="metadata-item">
+            <div class="label">Versandart</div>
+            <div class="value">{{ versandart }}</div>
+        </div>
+        <div class="metadata-item">
+            <div class="label">Unsere UStIDNr</div>
+            <div class="value">{{ ust_id_uns }}</div>
+        </div>
+        <div class="metadata-item">
+            <div class="label">Lieferbedingung</div>
+            <div class="value">{{ lieferbedingung or '-' }}</div>
+        </div>
+        <div class="metadata-item">
+            <div class="label">Bezug</div>
+            <div class="value">{{ bezug or '-' }}</div>
+        </div>
+        <div class="metadata-item">
+            <div class="label">Ihre UStIDNr</div>
+            <div class="value">{{ ust_id_kunde or '-' }}</div>
+        </div>
+        <div class="metadata-item">
+            <div class="label">Ihr Zeichen</div>
+            <div class="value">{{ ihr_zeichen or '-' }}</div>
+        </div>
+        <div class="metadata-item">
+            <div class="label">Ihr Beleg</div>
+            <div class="value">{{ ihr_beleg or '-' }}</div>
+        </div>
+        <div class="metadata-item">
+            <div class="label">Steuer-Nr.</div>
+            <div class="value">{{ steuer_nr_uns or '-' }}</div>
+        </div>
+    </div>
+
+    <!-- Artikel-Tabelle -->
+    <table class="items-table">
+        <thead>
+            <tr>
+                <th style="text-align: left;">Pos.</th>
+                <th style="text-align: left;">Artikelnr.</th>
+                <th style="text-align: left;">Bezeichnung</th>
+                <th style="text-align: left;">Termin</th>
+                <th style="text-align: right;">Menge</th>
+                <th style="text-align: right;">Einzelpreis</th>
+                <th style="text-align: right;">Gesamtpreis</th>
+                <th style="text-align: right;">SC</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td class="pos">{{ item.pos }}</td>
+                <td class="artnr">{{ item.artikelnr }}</td>
+                <td class="bezeichnung">
+                    <div>{{ item.name }}</div>
+                    {% if item.details %}
+                        <div class="item-details">{{ item.details }}</div>
+                    {% endif %}
+                </td>
+                <td class="termin">{{ item.termin or '' }}</td>
+                <td class="menge" style="text-align: right;">{{ item.menge_str }}</td>
+                <td class="einzelpreis" style="text-align: right;">{{ item.einzelpreis_str }}</td>
+                <td class="gesamtpreis" style="text-align: right;">{{ item.gesamtpreis_str }}</td>
+                <td class="sc" style="text-align: right;">{{ item.sc }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Summen- und Steuerblock -->
+    <div class="totals-container">
+        <div class="totals-block">
+            <table class="totals-table">
+                <tr class="zwischensumme">
+                    <td class="label">Zwischensumme</td>
+                    <td class="value">EUR {{ zwischensumme_str }}</td>
+                </tr>
+                {% for tax in taxes %}
+                <tr class="mwst">
+                    <td class="label">incl. MwSt. mit Steuercode {{ tax.sc }} ({{ tax.rate_str }} % von {{ tax.base_str }})</td>
+                    <td class="value">EUR {{ tax.value_str }}</td>
+                </tr>
+                {% endfor %}
+                <tr class="endsumme">
+                    <td class="label">Endsumme</td>
+                    <td class="value">EUR {{ endsumme_str }}</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <!-- Notes if present -->
+    {% if notes %}
+    <div class="notes-block">
+        <div class="notes-title">Anmerkungen:</div>
+        <div>{{ notes }}</div>
+    </div>
+    {% endif %}
+
+    <!-- Payment block -->
+    <div class="payment-container" style="page-break-inside: avoid; margin-bottom: 35px;">
+        <div class="payment-info" style="width: 100%; font-size: 11px; line-height: 1.5; font-weight: 500;">
+            <div style="{% if financial_status == 'paid' %}color: #26A269; font-weight: 600; border-left: 3px solid #26A269; padding-left: 10px;{% endif %}">
+                {{ payment_text }}
+            </div>
+            <div style="margin-top: 8px; font-size: 10px; color: #555555;">
+                Bis zur vollständigen Zahlung des Kaufpreises verbleiben die Waren in unserem alleinigen Eigentum.
+            </div>
+        </div>
+    </div>
+
+    <!-- Brief-Footer -->
+    <div class="page-footer">
+        <div class="footer-col">
+            <span class="footer-col-strong">OÖ Landesverband für Bienenzucht</span><br>
+            Pachmayrstr. 57, A – 4040 Linz<br>
+            Tel.: +43 732 73 20 70<br>
+            office@bzv-ooe.at
+        </div>
+        <div class="footer-col">
+            IBAN: AT19 1860 0000 1002 1657<br>
+            BIC: VKBLAT2L<br>
+            www.bzv-ooe.at
+        </div>
+        <div class="footer-col">
+            ZVR: 330142995<br>
+            ATU23004200<br>
+            VIS: 4727983
+        </div>
+        <div class="footer-col" style="text-align: right;">
+            Die Rechnungslegung erfolgt<br>
+            im Namen und auf Rechnung des<br>
+            OÖ Landesverbandes für Bienenzucht.
+        </div>
+    </div>
+
+</body>
+</html>

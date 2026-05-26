@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  rechnungs-generator:
+    build: .
+    container_name: rechnungs-generator
+    restart: unless-stopped
+    ports:
+      - "5050:5000"
+    volumes:
+      # Persist generated PDF invoices on the host system
+      - ./Rechnungen_Erstellt:/app/Rechnungen_Erstellt
+      # Mount env file dynamically for MS SQL database connections
+      - ./env:/app/env
+    environment:
+      - FLASK_ENV=production

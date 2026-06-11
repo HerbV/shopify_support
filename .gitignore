@@ -1,6 +1,8 @@
 # Secrets / Konfiguration – NIEMALS committen
 env
 .env
+env.txt
+env.backup
 
 # Python
 __pycache__/
@@ -13,6 +15,7 @@ venv/
 # Kundendaten & generierte Artefakte (Datenschutz)
 Rechnungen/
 Rechnungen_Erstellt/
+data/
 temp_uploads/
 static/logo.png
 *.pdf

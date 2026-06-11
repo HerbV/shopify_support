@@ -33,18 +33,18 @@
             <thead>
                 <tr>
                     <th>Belegnummer</th>
+                    <th>Bestellnummer</th>
                     <th>Dateiname</th>
-                    <th class="hide-mobile">Größe</th>
                     <th class="hide-mobile">Erstellt am</th>
                     <th style="text-align:center; width: 180px;">Aktionen</th>
                 </tr>
             </thead>
             <tbody id="archiveTableBody">
                 {% for inv in invoices %}
-                <tr data-name="{{ inv.name|lower }}">
+                <tr data-name="{{ inv.name|lower }} {{ inv.bestellnr|lower }}">
                     <td class="mono text-bold">{{ inv.beleg }}</td>
+                    <td class="mono text-sm">{{ inv.bestellnr or '—' }}</td>
                     <td class="text-sm">{{ inv.name }}</td>
-                    <td class="mono hide-mobile text-sm">{{ inv.size }} KB</td>
                     <td class="text-sm hide-mobile">{{ inv.created }}</td>
                     <td style="text-align:center;">
                         <div style="display:flex; gap:6px; justify-content:center;">

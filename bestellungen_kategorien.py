@@ -44,6 +44,24 @@ def fetch_all_orders():
     return orders
 
 
+def lieferdatum_sortkey(variant_title):
+    s = variant_title or ""
+    m = re.search(r"\b(\d{1,2})\.(\d{1,2})\.(\d{2,4})?\b", s)
+    if m:
+        day = int(m.group(1))
+        month = int(m.group(2))
+        year = int(m.group(3)) if m.group(3) else 2026
+        if year < 100:
+            year += 2000
+        from datetime import datetime
+        try:
+            return (0, datetime(year, month, day))
+        except ValueError:
+            pass
+    from datetime import datetime
+    return (1, datetime.max)
+
+
 def categorize(orders):
     """Liefert {Kategorie: [Zeilen-Dicts]}."""
     result = {name: [] for name, _ in CATEGORIES}
@@ -56,18 +74,33 @@ def categorize(orders):
                        if keyword in (li.get("title") or "").lower()]
             if not matched:
                 continue
-            qty = sum(li.get("quantity", 0) for li in matched)
-            products = "; ".join(sorted({li.get("title") for li in matched}))
-            result[cat_name].append({
-                "order": o.get("name"),
-                "date": date,
-                "customer": customer,
-                "qty": qty,
-                "products": products,
-            })
-    # Nach Bestellnummer sortieren
-    for rows in result.values():
-        rows.sort(key=lambda r: int(re.sub(r"\D", "", r["order"]) or 0))
+            if cat_name in ("Königinnen", "Belegstellen-Auffahrt"):
+                for li in matched:
+                    result[cat_name].append({
+                        "order": o.get("name"),
+                        "date": date,
+                        "customer": customer,
+                        "qty": li.get("quantity", 0),
+                        "products": li.get("title") or "—",
+                        "termin": (li.get("variant_title") or "").strip(),
+                    })
+            else:
+                qty = sum(li.get("quantity", 0) for li in matched)
+                products = "; ".join(sorted({li.get("title") for li in matched}))
+                result[cat_name].append({
+                    "order": o.get("name"),
+                    "date": date,
+                    "customer": customer,
+                    "qty": qty,
+                    "products": products,
+                    "termin": "",
+                })
+    # Sortieren:
+    for cat_name in result:
+        if cat_name in ("Königinnen", "Belegstellen-Auffahrt"):
+            result[cat_name].sort(key=lambda r: lieferdatum_sortkey(r["termin"]))
+        else:
+            result[cat_name].sort(key=lambda r: int(re.sub(r"\D", "", r["order"] or "") or 0))
     return result
 
 
@@ -75,10 +108,11 @@ def print_report(result):
     for cat_name, _ in CATEGORIES:
         rows = result[cat_name]
         total_qty = sum(r["qty"] for r in rows)
-        print(f"\n{'='*78}\n{cat_name}  —  {len(rows)} Bestellung(en), {total_qty} Stück\n{'='*78}")
+        print(f"\n{'='*78}\n{cat_name}  —  {len(rows)} Eintrag/Einträge, {total_qty} Stück\n{'='*78}")
         for r in rows:
+            term_str = f" [{r['termin']}]" if r.get('termin') else ""
             print(f"  {r['order']:<8} {r['date']}  {str(r['qty']).rjust(3)}×  "
-                  f"{r['customer'][:28].ljust(28)}  {r['products']}")
+                  f"{r['customer'][:28].ljust(28)}  {r['products']}{term_str}")
 
 
 def write_csv(result):
@@ -86,9 +120,16 @@ def write_csv(result):
         fname = f"liste_{cat_name.lower().replace(' ', '_').replace('-', '_')}.csv"
         with open(fname, "w", newline="", encoding="utf-8-sig") as fh:
             w = csv.writer(fh, delimiter=";")
-            w.writerow(["Bestellnr", "Datum", "Kunde", "Menge", "Produkte"])
-            for r in result[cat_name]:
-                w.writerow([r["order"], r["date"], r["customer"], r["qty"], r["products"]])
+            if cat_name in ("Königinnen", "Belegstellen-Auffahrt"):
+                term_col = "Termin" if cat_name == "Belegstellen-Auffahrt" else "Lieferdatum"
+                prod_col = "Belegstelle / Produkt" if cat_name == "Belegstellen-Auffahrt" else "Sorte"
+                w.writerow([term_col, "Bestellnr", "Datum", "Kunde", "Menge", prod_col])
+                for r in result[cat_name]:
+                    w.writerow([r["termin"] or "ohne Termin", r["order"], r["date"], r["customer"], r["qty"], r["products"]])
+            else:
+                w.writerow(["Bestellnr", "Datum", "Kunde", "Menge", "Produkte"])
+                for r in result[cat_name]:
+                    w.writerow([r["order"], r["date"], r["customer"], r["qty"], r["products"]])
         print(f"  geschrieben: {fname} ({len(result[cat_name])} Zeilen)")
 
 

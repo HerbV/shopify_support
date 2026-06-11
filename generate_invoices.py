@@ -171,6 +171,14 @@ def get_db_connection():
         print(f"Datenbankverbindung fehlgeschlagen: {e}")
         return None
 
+
+def qualified_table(table_name):
+    """Voll qualifizierter Tabellenname auf Basis der konfigurierten Datenbank
+    (SQL_DATABASE aus der env, z. B. BZV_2026 = Livedatenbank)."""
+    db = os.getenv("SQL_DATABASE", "BZV_2026")
+    return f"[{db}].[dbo].[{table_name}]"
+
+
 def check_membership(kdnr):
     """
     Checks if a customer number is an active member in the database.
@@ -185,7 +193,7 @@ def check_membership(kdnr):
         
     try:
         cursor = conn.cursor()
-        query = "SELECT kategorie FROM [BZV_Test].[dbo].[Mitglieder_alle_Daten] WHERE kundennummer = ?"
+        query = f"SELECT kategorie FROM {qualified_table('Mitglieder_alle_Daten')} WHERE kundennummer = ?"
         cursor.execute(query, (kdnr,))
         row = cursor.fetchone()
         if row:
@@ -217,7 +225,7 @@ def find_member_in_db(email=None, b_name=None, b_city=None):
         
         # 1. Try to match by exact Email address
         if email and email.strip():
-            query = "SELECT kundennummer FROM [BZV_Test].[dbo].[Mitglieder_alle_Daten] WHERE email = ?"
+            query = f"SELECT kundennummer FROM {qualified_table('Mitglieder_alle_Daten')} WHERE email = ?"
             cursor.execute(query, (email.strip(),))
             row = cursor.fetchone()
             if row and row[0]:
@@ -232,18 +240,18 @@ def find_member_in_db(email=None, b_name=None, b_city=None):
                 
                 # Check with both name and city
                 if b_city and b_city.strip():
-                    query = """
-                        SELECT kundennummer FROM [BZV_Test].[dbo].[Mitglieder_alle_Daten] 
+                    query = f"""
+                        SELECT kundennummer FROM {qualified_table('Mitglieder_alle_Daten')}
                         WHERE vorname = ? AND nachname = ? AND ort = ?
                     """
                     cursor.execute(query, (first_name, last_name, b_city.strip()))
                     row = cursor.fetchone()
                     if row and row[0]:
                         return str(row[0])
-                        
+
                 # 3. Fallback: match by Name alone
-                query = """
-                    SELECT kundennummer FROM [BZV_Test].[dbo].[Mitglieder_alle_Daten] 
+                query = f"""
+                    SELECT kundennummer FROM {qualified_table('Mitglieder_alle_Daten')}
                     WHERE vorname = ? AND nachname = ?
                 """
                 cursor.execute(query, (first_name, last_name))
@@ -262,23 +270,31 @@ def find_member_in_db(email=None, b_name=None, b_city=None):
             pass
 
 
-def generate_single_invoice(order, output_dir, belegnummer_str, vorgangsnummer_str):
-    """Generates a single PDF invoice from structured order data."""
+def generate_single_invoice(order, output_dir, belegnummer_str, vorgangsnummer_str, bearbeiter=None):
+    """Generates a single PDF invoice from structured order data.
+
+    bearbeiter: Name der erstellenden Person (angemeldeter Benutzer). Fällt auf
+    einen Standardwert zurück, wenn nichts übergeben wird.
+    """
+    bearbeiter = (bearbeiter or "").strip() or "OÖ Landesverband für Bienenzucht"
     total_brutto = order["total_brutto"]
+    # Endbetrag nach Abzug der Rückerstattung (Fallback: Brutto, falls Feld fehlt).
+    refunded_amount = order.get("refunded_amount", 0.0) or 0.0
+    endsumme = order.get("endsumme", total_brutto)
     financial_status = order["financial_status"]
     paid_at = order["paid_at"]
     created_at = order["created_at"]
     payment_method = order["payment_method"]
     kdnr = order["kdnr"]
     b_name = order["b_name"]
-    
+
     payment_date = format_german_date(paid_at) if paid_at else format_german_date(created_at)
     pm_str = str(payment_method) if payment_method else "Shopify-Zahlung"
-    
-    # Generate SEPA QR-Code if unpaid and positive amount
+
+    # Generate SEPA QR-Code if unpaid and positive amount (auf den Endbetrag nach Rückerstattung)
     qr_path = None
-    if total_brutto > 0.001 and financial_status != 'paid':
-        qr_data = f"BCD\n002\n1\nSCT\nVKBLAT2L\nOÖ Landesverband für Bienenzucht\nAT191860000010021657\nEUR{total_brutto:.2f}\n\n\nReNr {belegnummer_str} KdNr {kdnr}\n"
+    if endsumme > 0.001 and financial_status != 'paid':
+        qr_data = f"BCD\n002\n1\nSCT\nVKBLAT2L\nOÖ Landesverband für Bienenzucht\nAT191860000010021657\nEUR{endsumme:.2f}\n\n\nReNr {belegnummer_str} KdNr {kdnr}\n"
         qr = qrcode.QRCode(box_size=10, border=1)
         qr.add_data(qr_data)
         qr.make(fit=True)
@@ -286,8 +302,8 @@ def generate_single_invoice(order, output_dir, belegnummer_str, vorgangsnummer_s
         qr_path = os.path.join(output_dir, f"qr_{belegnummer_str}.png")
         img.save(qr_path)
 
-    if financial_status == 'paid' or total_brutto <= 0.001:
-        payment_text = f"Der Rechnungsbetrag von EUR {format_money(total_brutto)} wurde bereits am {payment_date} vollständig per {pm_str} bezahlt. Zahlung dankend erhalten."
+    if financial_status == 'paid' or endsumme <= 0.001:
+        payment_text = f"Der Rechnungsbetrag von EUR {format_money(endsumme)} wurde bereits am {payment_date} vollständig per {pm_str} bezahlt. Zahlung dankend erhalten."
     else:
         payment_text = f"Zahlungsvereinbarungen: Zahlung erfolgt sofort ohne Abzug. Bei eBanking bitte unbedingt anführen: ReNr {belegnummer_str} und KdNr {kdnr}."
         
@@ -305,19 +321,18 @@ def generate_single_invoice(order, output_dir, belegnummer_str, vorgangsnummer_s
         "belegnummer": belegnummer_str,
         "datum": format_german_date(created_at),
         "kundennummer": kdnr,
-        "bearbeiter": "Sabine Hochreiter",
+        "bearbeiter": bearbeiter,
         "versandart": order["shipping_method"] or "Bienenladen",
+        "zahlungsart": pm_str,
         "ust_id_uns": "ATU23004200",
-        "lieferbedingung": "",
-        "bezug": "",
-        "ust_id_kunde": "",
-        "ihr_zeichen": "",
-        "ihr_beleg": "",
-        "steuer_nr_uns": "",
+        # Online-Bestellung: Shopify-Bestellnummer + Bestelldatum kombiniert.
+        "online_bestellung": f"{order.get('order_name', '')} vom {format_german_date(created_at)}".strip(),
         "items": order["items"],
         "zwischensumme_str": format_money(total_brutto),
         "taxes": order["taxes_list"],
-        "endsumme_str": format_money(total_brutto),
+        "refunded_amount": refunded_amount,
+        "refund_str": format_money(refunded_amount),
+        "endsumme_str": format_money(endsumme),
         "notes": order["notes"],
         "payment_text": payment_text
     }
@@ -348,7 +363,7 @@ def generate_single_invoice(order, output_dir, belegnummer_str, vorgangsnummer_s
             os.remove(temp_html_path)
         if qr_path and os.path.exists(qr_path):
             os.remove(qr_path)
-        return True, f"Erfolgreich erstellt: Rechnung {belegnummer_str}.pdf für {b_name} (KdNr: {kdnr}, Betrag: {format_money(total_brutto)} EUR)"
+        return True, f"Erfolgreich erstellt: Rechnung {belegnummer_str}.pdf für {b_name} (KdNr: {kdnr}, Betrag: {format_money(endsumme)} EUR)"
     except subprocess.CalledProcessError as e:
         if os.path.exists(temp_html_path):
             os.remove(temp_html_path)
@@ -418,10 +433,11 @@ def get_shopify_token():
         return None, f"Verbindungsfehler bei der Shopify-Token-Anfrage: {str(e)}"
 
 
-def fetch_shopify_orders_from_api(start_date, end_date, status="any"):
+def fetch_shopify_orders_params(extra_params):
     """
-    Queries the Shopify Admin API (REST) for orders in a specific date range,
-    following pagination so all matching orders are returned.
+    Low-level Shopify Admin API (REST) order fetch with cursor pagination.
+    `extra_params` is merged onto the defaults (status=any, limit=250), e.g.
+    {"created_at_min": ...} or {"updated_at_min": ...}.
     Returns (orders_json, error_message).
     """
     token, err = get_shopify_token()
@@ -434,17 +450,8 @@ def fetch_shopify_orders_from_api(start_date, end_date, status="any"):
         "Content-Type": "application/json",
     }
 
-    # Format dates to ISO-8601 with timezone (Shopify expects this)
-    # E.g., 2026-05-01T00:00:00+02:00
-    params = {
-        "status": "any",
-        "created_at_min": f"{start_date}T00:00:00+02:00",
-        "created_at_max": f"{end_date}T23:59:59+02:00",
-        "limit": 250,
-    }
-    # The UI sends payment states (paid/unpaid); those belong to financial_status.
-    if status and status != "any":
-        params["financial_status"] = status
+    params = {"status": "any", "limit": 250}
+    params.update(extra_params or {})
 
     url = f"https://{shop}.myshopify.com/admin/api/{SHOPIFY_API_VERSION}/orders.json"
     all_orders = []
@@ -475,6 +482,206 @@ def fetch_shopify_orders_from_api(start_date, end_date, status="any"):
         return all_orders, None
     except Exception as e:
         return None, f"Verbindungsfehler zur Shopify-API: {str(e)}"
+
+
+def fetch_shopify_orders_from_api(start_date, end_date, status="any"):
+    """
+    Queries the Shopify Admin API (REST) for orders in a specific date range.
+    Returns (orders_json, error_message).
+    """
+    # Format dates to ISO-8601 with timezone (Shopify expects this)
+    # E.g., 2026-05-01T00:00:00+02:00
+    extra = {
+        "created_at_min": f"{start_date}T00:00:00+02:00",
+        "created_at_max": f"{end_date}T23:59:59+02:00",
+    }
+    # The UI sends payment states (paid/unpaid); those belong to financial_status.
+    if status and status != "any":
+        extra["financial_status"] = status
+    return fetch_shopify_orders_params(extra)
+
+
+def fetch_order_transactions(order_id):
+    """Holt die Transaktionen einer Bestellung (für die genaue Zahlungsart).
+    Gibt eine Liste zurück (leer bei Fehler)."""
+    token, err = get_shopify_token()
+    if err:
+        return []
+    shop = os.getenv("SHOPIFY_SHOP", "").strip().rstrip('.').replace(".myshopify.com", "")
+    url = f"https://{shop}.myshopify.com/admin/api/{SHOPIFY_API_VERSION}/orders/{order_id}/transactions.json"
+    headers = {"X-Shopify-Access-Token": token, "Content-Type": "application/json"}
+    try:
+        r = requests.get(url, headers=headers, timeout=20)
+        if r.status_code == 429:
+            # Rate-Limit: kurz warten (Retry-After beachten) und einmal erneut versuchen.
+            try:
+                wait = float(r.headers.get("Retry-After", 1.0))
+            except ValueError:
+                wait = 1.0
+            time.sleep(min(wait, 5.0))
+            r = requests.get(url, headers=headers, timeout=20)
+        if r.status_code != 200:
+            return []
+        return r.json().get("transactions", []) or []
+    except Exception:
+        return []
+
+
+# Gateway-Namen -> lesbare deutsche Bezeichnung (Fallback ohne Kartendetails).
+PAYMENT_GATEWAY_LABELS = {
+    "shopify_payments": "Kredit-/Debitkarte",
+    "paypal": "PayPal",
+    "manual": "Manuelle Zahlung",
+    "bogus": "Testzahlung",
+    "cash": "Barzahlung",
+    "cash_on_delivery": "Nachnahme",
+    "bank_deposit": "Banküberweisung",
+    "Zahlung bei Abholung im Bienenladen": "Barzahlung bei Abholung",
+}
+
+# payment_details.payment_method_name -> lesbare Bezeichnung (Karten, Wallets, Methoden).
+PAYMENT_METHOD_NAME_LABELS = {
+    "master": "Kreditkarte Mastercard",
+    "mastercard": "Kreditkarte Mastercard",
+    "visa": "Kreditkarte Visa",
+    "american_express": "Kreditkarte Amex",
+    "amex": "Kreditkarte Amex",
+    "maestro": "Maestro",
+    "discover": "Kreditkarte Discover",
+    "diners_club": "Diners Club",
+    "jcb": "Kreditkarte JCB",
+    "union_pay": "UnionPay",
+    "unionpay": "UnionPay",
+    "paypal": "PayPal",
+    "apple_pay": "Apple Pay",
+    "google_pay": "Google Pay",
+    "shopify_pay": "Shop Pay",
+    "shop_pay": "Shop Pay",
+    "klarna": "Klarna",
+    "eps": "EPS",
+    "sofort": "Sofortüberweisung",
+    "ideal": "iDEAL",
+    "bancontact": "Bancontact",
+}
+
+# credit_card_company-Werte, die keine echte Marke sind (z. B. bei PayPal).
+_INVALID_CARD_COMPANIES = {"", "unknown", "n/a", "none"}
+
+
+def _gateway_label(gw):
+    gw = (gw or "").strip()
+    if not gw:
+        return ""
+    return PAYMENT_GATEWAY_LABELS.get(gw, gw)
+
+
+def derive_payment_method(order):
+    """Ermittelt die genaue Zahlungsart einer Bestellung.
+
+    Bevorzugt die (zuvor abgerufenen und eingebetteten) Transaktionen:
+    Kartenmarke ("Kreditkarte Visa •1234"), Methode/Wallet (PayPal, Apple Pay,
+    Klarna, EPS …) oder Gateway. Fällt sonst auf die Gateway-Namen zurück.
+    """
+    transactions = order.get("transactions") or []
+    relevant = [
+        t for t in transactions
+        if t.get("status") == "success" and t.get("kind") in ("sale", "capture", "authorization")
+    ]
+    for t in relevant:
+        pd = t.get("payment_details") or {}
+        gw = (t.get("gateway") or "").strip()
+        pmn = (pd.get("payment_method_name") or "").strip().lower()
+
+        # 1) Echte Kreditkartenmarke (nicht "unknown" wie bei PayPal)
+        company = (pd.get("credit_card_company") or "").strip()
+        if company.lower() not in _INVALID_CARD_COMPANIES:
+            last4 = re.sub(r"\D", "", pd.get("credit_card_number") or "")[-4:]
+            label = f"Kreditkarte {company}"
+            return f"{label} •{last4}" if last4 else label
+
+        # 2) payment_method_name -> Karte/Wallet/Methode (z. B. paypal, master, klarna)
+        if pmn in PAYMENT_METHOD_NAME_LABELS:
+            return PAYMENT_METHOD_NAME_LABELS[pmn]
+
+        # 3) Gateway der Transaktion
+        if gw:
+            return _gateway_label(gw)
+
+    # 4) Fallback: Gateway-Namen der Bestellung
+    names = [_gateway_label(g) for g in (order.get("payment_gateway_names") or []) if g]
+    if names:
+        return ", ".join(dict.fromkeys(names))  # Duplikate entfernen, Reihenfolge halten
+    return "Offen"
+
+
+# Shopify-Fulfillment-Status -> lesbare deutsche Bezeichnung.
+FULFILLMENT_STATUS_LABELS = {
+    "fulfilled": "Versendet",
+    "partial": "Teilweise versendet",
+    "restocked": "Zurück ins Lager",
+    "unfulfilled": "Nicht versendet",
+    None: "Nicht versendet",
+}
+
+
+def extract_shipping_info(order):
+    """Stellt die Versandinformationen einer Bestellung strukturiert bereit:
+    Versandart, -kosten, Lieferadresse, Versandstatus und Tracking."""
+    shipping_lines = order.get("shipping_lines") or []
+    sl = shipping_lines[0] if shipping_lines else {}
+    method = sl.get("title") or sl.get("code")
+    try:
+        cost = float(sl.get("price", 0.0)) if sl else 0.0
+    except (TypeError, ValueError):
+        cost = 0.0
+
+    # Lieferadresse (abweichend von der Rechnungsadresse), falls vorhanden
+    sa = order.get("shipping_address") or {}
+    address_lines = []
+    if sa:
+        if sa.get("name"):
+            address_lines.append(sa["name"].strip())
+        if sa.get("company"):
+            address_lines.append(sa["company"].strip())
+        street = (sa.get("address1") or "").strip()
+        if sa.get("address2"):
+            street = f"{street} {sa['address2'].strip()}".strip()
+        if street:
+            address_lines.append(street)
+        zip_city = f"{(sa.get('zip') or '').strip()} {(sa.get('city') or '').strip()}".strip()
+        if zip_city:
+            address_lines.append(zip_city)
+        country = (sa.get("country") or sa.get("country_code") or "").strip()
+        if country and country.upper() not in ("AT", "AUSTRIA", "ÖSTERREICH", "OESTERREICH"):
+            address_lines.append(country)
+
+    # Versandstatus + Tracking aus fulfillments
+    raw_status = order.get("fulfillment_status")
+    status_label = FULFILLMENT_STATUS_LABELS.get(raw_status, raw_status or "Nicht versendet")
+    tracking = []
+    for f in (order.get("fulfillments") or []):
+        company = f.get("tracking_company")
+        numbers = f.get("tracking_numbers") or ([f.get("tracking_number")] if f.get("tracking_number") else [])
+        urls = f.get("tracking_urls") or ([f.get("tracking_url")] if f.get("tracking_url") else [])
+        for i, num in enumerate(numbers):
+            if not num:
+                continue
+            tracking.append({
+                "company": company,
+                "number": num,
+                "url": urls[i] if i < len(urls) else (urls[0] if urls else None),
+            })
+
+    return {
+        "method": method,
+        "cost": round(cost, 2),
+        "cost_str": format_money(cost),
+        "address_lines": address_lines,
+        "status": raw_status,
+        "status_label": status_label,
+        "tracking": tracking,
+        "phone": (sa.get("phone") or order.get("phone") or "").strip() or None,
+    }
 
 
 def parse_shopify_api_orders(api_orders):
@@ -530,11 +737,15 @@ def parse_shopify_api_orders(api_orders):
         shipping_lines = order.get("shipping_lines", [])
         shipping_method = shipping_lines[0].get("title") if shipping_lines else None
         shipping_cost = float(shipping_lines[0].get("price", 0.0)) if shipping_lines else 0.0
-        
+        # Vollständige Versandinformationen (Lieferadresse, Status, Tracking)
+        shipping_info = extract_shipping_info(order)
+
         tags = order.get("tags")
         payment_gateway_names = order.get("payment_gateway_names", [])
-        payment_method = ", ".join(payment_gateway_names) if payment_gateway_names else "Shopify"
-        
+        # Genaue Zahlungsart: bevorzugt aus den (zuvor abgerufenen) Transaktionen,
+        # sonst aus den Gateway-Namen abgeleitet.
+        payment_method = derive_payment_method(order)
+
         financial_status = order.get("financial_status")
         paid_at = order.get("processed_at") if financial_status == "paid" else None
         notes = order.get("note")
@@ -642,9 +853,11 @@ def parse_shopify_api_orders(api_orders):
                 
             items.append({
                 "pos": pos,
+                "line_id": str(item.get("id")) if item.get("id") is not None else None,
                 "artikelnr": map_product_to_artnr(item_name),
                 "name": item_name,
                 "details": f"Rabatt: -{format_money(disc_amount)} EUR" if disc_amount > 0 else None,
+                "hinweis": "",
                 "termin": extract_termin(item_name, created_at),
                 "variant": (item.get("variant_title") or "").replace("\t", " ").strip(),
                 "category": cat,
@@ -663,9 +876,11 @@ def parse_shopify_api_orders(api_orders):
             
             items.append({
                 "pos": pos,
+                "line_id": None,
                 "artikelnr": "109008",
                 "name": f"Versandkosten ({shipping_method or 'Standard'})",
                 "details": None,
+                "hinweis": "",
                 "termin": format_german_date(created_at),
                 "menge_str": "1x",
                 "einzelpreis_str": format_money(shipping_cost),
@@ -676,33 +891,66 @@ def parse_shopify_api_orders(api_orders):
 
         total_brutto = brutto_total_0 + brutto_total_13 + brutto_total_20
 
-        # Calculate Net Base and Tax Values
+        # --- Rücküberweisung (Refund) aus Shopify ableiten -----------------
+        # Erstatteter Betrag = Summe aller erfolgreichen Refund-Transaktionen (brutto).
+        refunds = order.get("refunds") or []
+        refunded_amount = 0.0
+        for rf in refunds:
+            for tx in (rf.get("transactions") or []):
+                if tx.get("kind") == "refund" and tx.get("status") == "success":
+                    try:
+                        refunded_amount += float(tx.get("amount") or 0.0)
+                    except (TypeError, ValueError):
+                        pass
+        refunded_amount = round(refunded_amount, 2)
+
+        # Klassifikation: primär über Shopifys financial_status, Betrag als Fallback.
+        if financial_status == "refunded":
+            refund_type = "full"
+        elif financial_status == "partially_refunded":
+            refund_type = "partial"
+        elif refunded_amount > 0.001:
+            refund_type = "full" if total_brutto > 0 and refunded_amount >= total_brutto - 0.01 else "partial"
+        else:
+            refund_type = "none"
+
+        # Die Rückerstattung mindert die Brutto-Töpfe anteilig (proportional zum
+        # Brutto-Anteil je Steuersatz), damit Netto-Basis UND USt steuerkonform
+        # reduziert werden. Endbetrag = ursprüngliches Brutto − Rückerstattung.
+        endsumme = round(total_brutto - refunded_amount, 2)
+        net_factor = (endsumme / total_brutto) if total_brutto > 0 and refunded_amount > 0 else 1.0
+        eff_20 = brutto_total_20 * net_factor
+        eff_13 = brutto_total_13 * net_factor
+        eff_0 = brutto_total_0 * net_factor
+
+        # Calculate Net Base and Tax Values (auf den um die Rückerstattung
+        # geminderten Brutto-Beträgen).
         taxes_list = []
-        if brutto_total_20 > 0:
-            net_base = round(brutto_total_20 / 1.20, 2)
-            tax_val = round(brutto_total_20 - net_base, 2)
+        if eff_20 > 0:
+            net_base = round(eff_20 / 1.20, 2)
+            tax_val = round(eff_20 - net_base, 2)
             taxes_list.append({
                 "sc": "1",
                 "rate_str": "20,00",
                 "base_str": format_money(net_base),
                 "value_str": format_money(tax_val)
             })
-            
-        if brutto_total_13 > 0:
-            net_base = round(brutto_total_13 / 1.13, 2)
-            tax_val = round(brutto_total_13 - net_base, 2)
+
+        if eff_13 > 0:
+            net_base = round(eff_13 / 1.13, 2)
+            tax_val = round(eff_13 - net_base, 2)
             taxes_list.append({
                 "sc": "2",
                 "rate_str": "13,00",
                 "base_str": format_money(net_base),
                 "value_str": format_money(tax_val)
             })
-            
-        if brutto_total_0 > 0:
+
+        if eff_0 > 0:
             taxes_list.append({
                 "sc": "0",
                 "rate_str": "0,00",
-                "base_str": format_money(brutto_total_0),
+                "base_str": format_money(eff_0),
                 "value_str": format_money(0.0)
             })
 
@@ -724,6 +972,8 @@ def parse_shopify_api_orders(api_orders):
             "b_country": b_country,
             "shipping_method": shipping_method,
             "shipping_cost": shipping_cost,
+            # Vollständige Versandinformationen für die Detailansicht
+            "shipping_info": shipping_info,
             "tags": tags,
             "payment_method": payment_method,
             "paid_at": paid_at,
@@ -734,11 +984,19 @@ def parse_shopify_api_orders(api_orders):
             "items": items,
             "total_brutto": total_brutto,
             "total_brutto_str": format_money(total_brutto),
+            # Endbetrag nach Abzug der Rückerstattung (= total_brutto, wenn keine).
+            "endsumme": endsumme,
+            "endsumme_str": format_money(endsumme),
             "taxes_list": taxes_list,
             "total_discount": total_discount,
             "total_discount_str": format_money(total_discount),
             "is_member": is_member,
             "member_missing_discount": member_missing_discount,
+            # Rücküberweisung aus Shopify: "none" | "partial" | "full"
+            "refund_type": refund_type,
+            "refunded": refund_type != "none",
+            "refunded_amount": round(refunded_amount, 2),
+            "refunded_amount_str": format_money(refunded_amount),
             "db_error": db_error,
             "categories": sorted(order_categories),
             "umlarv_termine": sorted(umlarv_termine),

@@ -202,6 +202,15 @@
             line-height: 1.3;
         }
 
+        .item-hinweis {
+            font-size: 9.5px;
+            color: #444444;
+            font-style: italic;
+            margin-top: 3px;
+            white-space: pre-wrap;
+            line-height: 1.3;
+        }
+
         /* Summen- und Steuerblock */
         .totals-container {
             display: flex;
@@ -235,6 +244,12 @@
             font-size: 10px;
             color: #555555;
             padding: 3px 0;
+        }
+
+        .totals-table tr.rueckerstattung td {
+            font-size: 11px;
+            color: #B91C1C;
+            padding-top: 5px;
         }
 
         .totals-table tr.endsumme td {
@@ -370,7 +385,7 @@
                     <td class="value">{{ kundennummer }}</td>
                 </tr>
                 <tr>
-                    <td class="label">Bearbeiter</td>
+                    <td class="label">Bearbeiter*in</td>
                     <td class="value">{{ bearbeiter }}</td>
                 </tr>
             </table>
@@ -385,32 +400,16 @@
             <div class="value">{{ versandart }}</div>
         </div>
         <div class="metadata-item">
+            <div class="label">Zahlungsart</div>
+            <div class="value">{{ zahlungsart or '-' }}</div>
+        </div>
+        <div class="metadata-item">
             <div class="label">Unsere UStIDNr</div>
             <div class="value">{{ ust_id_uns }}</div>
         </div>
         <div class="metadata-item">
-            <div class="label">Lieferbedingung</div>
-            <div class="value">{{ lieferbedingung or '-' }}</div>
-        </div>
-        <div class="metadata-item">
-            <div class="label">Bezug</div>
-            <div class="value">{{ bezug or '-' }}</div>
-        </div>
-        <div class="metadata-item">
-            <div class="label">Ihre UStIDNr</div>
-            <div class="value">{{ ust_id_kunde or '-' }}</div>
-        </div>
-        <div class="metadata-item">
-            <div class="label">Ihr Zeichen</div>
-            <div class="value">{{ ihr_zeichen or '-' }}</div>
-        </div>
-        <div class="metadata-item">
-            <div class="label">Ihr Beleg</div>
-            <div class="value">{{ ihr_beleg or '-' }}</div>
-        </div>
-        <div class="metadata-item">
-            <div class="label">Steuer-Nr.</div>
-            <div class="value">{{ steuer_nr_uns or '-' }}</div>
+            <div class="label">Online Bestellung</div>
+            <div class="value">{{ online_bestellung or '-' }}</div>
         </div>
     </div>
 
@@ -438,6 +437,9 @@
                     {% if item.details %}
                         <div class="item-details">{{ item.details }}</div>
                     {% endif %}
+                    {% if item.hinweis %}
+                        <div class="item-hinweis">{{ item.hinweis }}</div>
+                    {% endif %}
                 </td>
                 <td class="termin">{{ item.termin or '' }}</td>
                 <td class="menge" style="text-align: right;">{{ item.menge_str }}</td>
@@ -463,6 +465,12 @@
                     <td class="value">EUR {{ tax.value_str }}</td>
                 </tr>
                 {% endfor %}
+                {% if refunded_amount and refunded_amount > 0.001 %}
+                <tr class="rueckerstattung">
+                    <td class="label">Rückerstattung</td>
+                    <td class="value">- EUR {{ refund_str }}</td>
+                </tr>
+                {% endif %}
                 <tr class="endsumme">
                     <td class="label">Endsumme</td>
                     <td class="value">EUR {{ endsumme_str }}</td>

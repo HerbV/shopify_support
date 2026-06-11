@@ -11,33 +11,23 @@
 {% endblock %}
 
 {% block content %}
-<!-- Direct Shopify API Fetch Container -->
+<!-- Lokaler Bestand + Aktualisierung -->
 <div id="apiTabContent">
-    <div style="background: var(--white); border-radius: 12px; border: 1px solid var(--gray-200); padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
-        <h3 style="margin-bottom: 16px; font-weight: 500; color: var(--gray-800); display: flex; align-items: center; gap: 8px;">
-            <span>🐝</span> Shopify Admin API Abruf
-        </h3>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px;">
-            <div style="display: flex; flex-direction: column; gap: 6px;">
-                <label style="font-size: 0.85rem; font-weight: 500; color: var(--gray-600);">Startdatum</label>
-                <input type="date" id="apiStartDate" style="padding: 9px 12px; border: 1px solid var(--gray-300); border-radius: 8px; outline: none; font-family: 'Ubuntu', sans-serif; font-size: 0.9rem;">
-            </div>
-            <div style="display: flex; flex-direction: column; gap: 6px;">
-                <label style="font-size: 0.85rem; font-weight: 500; color: var(--gray-600);">Enddatum</label>
-                <input type="date" id="apiEndDate" style="padding: 9px 12px; border: 1px solid var(--gray-300); border-radius: 8px; outline: none; font-family: 'Ubuntu', sans-serif; font-size: 0.9rem;">
-            </div>
-            <div style="display: flex; flex-direction: column; gap: 6px;">
-                <label style="font-size: 0.85rem; font-weight: 500; color: var(--gray-600);">Zahlungsstatus</label>
-                <select id="apiStatus" style="padding: 9px 12px; border: 1px solid var(--gray-300); border-radius: 8px; outline: none; font-family: 'Ubuntu', sans-serif; font-size: 0.9rem; background: white;">
-                    <option value="any">Alle (Paid & Unpaid)</option>
-                    <option value="paid">Nur Bezahlt (Paid)</option>
-                    <option value="unpaid">Nur Offen (Unpaid)</option>
-                </select>
+    <div style="background: var(--white); border-radius: 12px; border: 1px solid var(--gray-200); padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+        <div>
+            <h3 style="font-weight: 500; color: var(--gray-800); display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                <span>🐝</span> Shopify-Daten
+            </h3>
+            <div id="storeStatus" style="font-size: 0.88rem; color: var(--gray-500);">Lade lokalen Bestand…</div>
+            <!-- Erstbefüllung: nur sichtbar, solange noch nichts lokal gespeichert ist -->
+            <div id="initialFillRow" style="display:none; margin-top:12px; align-items:flex-end; gap:12px; flex-wrap:wrap;">
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                    <label style="font-size: 0.85rem; font-weight: 500; color: var(--gray-600);">Erstbefüllung ab (einmalig)</label>
+                    <input type="date" id="initialStart" style="padding: 9px 12px; border: 1px solid var(--gray-300); border-radius: 8px; outline: none; font-family: 'Ubuntu', sans-serif; font-size: 0.9rem;">
+                </div>
             </div>
         </div>
-        <div style="display: flex; justify-content: flex-end;">
-            <button class="btn btn-primary" id="btnApiFetch" style="font-weight: 600;">Bestellungen abrufen</button>
-        </div>
+        <button class="btn btn-primary" id="btnUpdate" style="font-weight: 600;">🔄 Aktualisieren</button>
     </div>
 </div>
 
@@ -71,10 +61,16 @@
             <button class="btn btn-secondary btn-sm" id="btnSelectAll">✓ Alle auswählen</button>
         </div>
     </div>
-    
-    <!-- Category filter chips -->
-    <div id="categoryFilter" style="display:flex; flex-wrap:wrap; gap:8px; padding:0 16px 14px; border-bottom:1px solid var(--gray-200);">
-        <!-- Populated dynamically via JS -->
+
+    <!-- Filterleiste: kombinierbare Kriterien (alle aktiven greifen gleichzeitig) -->
+    <div style="display:flex; align-items:center; gap:18px 20px; flex-wrap:wrap; padding:0 16px 14px; font-size:0.86rem; color:var(--gray-600);">
+        <strong style="color:var(--gray-700);">Filter:</strong>
+        <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="filter-chk" data-filter="member"> Mitglied ohne Rabatt</label>
+        <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="filter-chk" data-filter="over0"> Über 0 €</label>
+        <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="filter-chk" data-filter="noinvoice"> Ohne Rechnung</label>
+        <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="filter-chk" data-filter="notnv"> Ohne „Nicht verrechnen"</label>
+        <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" class="filter-chk" data-filter="neukunde"> Neukunden (ohne Kundennummer)</label>
+        <button type="button" class="btn btn-secondary btn-sm" id="btnClearFilters" style="display:none;">Filter zurücksetzen</button>
     </div>
 
     <div class="table-wrap">
@@ -86,6 +82,11 @@
                     <th>Kunde</th>
                     <th>Produkt</th>
                     <th>Liefertermin</th>
+                    <th style="text-align:right; white-space:nowrap;">Betrag</th>
+                    <th style="white-space:nowrap;">Zahlungsart</th>
+                    <th style="white-space:nowrap;">Rechnung</th>
+                    <th style="text-align:center; white-space:nowrap;">Nicht verrechnen</th>
+                    <th style="text-align:center; white-space:nowrap;">Rücküberwiesen</th>
                 </tr>
             </thead>
             <tbody id="ordersTableBody">
@@ -99,6 +100,17 @@
 <div class="total-bar" id="totalBar" style="display:none; margin-top: 15px;">
     <span style="font-weight: 500; color: var(--gray-700);" id="totalBarLabel">Gesamtsumme (0 Rechnungen ausgewählt)</span>
     <span class="total-value" id="totalBarValue">€ 0,00</span>
+</div>
+
+<!-- Detail-Fenster (Modal) je Bestellung -->
+<div id="detailOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:200; align-items:flex-start; justify-content:center; padding:32px 16px; overflow-y:auto;">
+    <div id="detailModal" role="dialog" aria-modal="true" style="background:var(--white); border-radius:14px; width:100%; max-width:760px; box-shadow:0 20px 60px rgba(0,0,0,0.3); overflow:hidden;">
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:16px 22px; background:var(--gray-50); border-bottom:1px solid var(--gray-200);">
+            <h2 id="detailTitle" style="margin:0; font-size:1.05rem; font-weight:600; color:var(--gray-800);">Bestelldetails</h2>
+            <button type="button" id="detailClose" title="Schließen" style="background:none; border:none; font-size:1.6rem; line-height:1; cursor:pointer; color:var(--gray-600);">&times;</button>
+        </div>
+        <div id="detailBody" style="padding:20px 22px; max-height:calc(100vh - 160px); overflow-y:auto;"></div>
+    </div>
 </div>
 {% endblock %}
 
@@ -123,89 +135,93 @@ document.addEventListener("DOMContentLoaded", function() {
     const btnSelectAll = document.getElementById("btnSelectAll");
     const btnDeselectAll = document.getElementById("btnDeselectAll");
 
-    // API fetch elements
-    const btnApiFetch = document.getElementById("btnApiFetch");
-    const apiStartDate = document.getElementById("apiStartDate");
-    const apiEndDate = document.getElementById("apiEndDate");
-    const apiStatus = document.getElementById("apiStatus");
-
-    // Category filter
-    const categoryFilter = document.getElementById("categoryFilter");
+    // Lokaler Bestand / Aktualisierung
+    const btnUpdate = document.getElementById("btnUpdate");
+    const storeStatus = document.getElementById("storeStatus");
+    const initialFillRow = document.getElementById("initialFillRow");
+    const initialStart = document.getElementById("initialStart");
 
     let allOrders = [];
-    let currentCategory = "all";
-    let currentTermin = null;
+    let hasLocalData = false;     // ob bereits etwas lokal gespeichert ist
+    // Kombinierbare Filter (alle aktiven Kriterien greifen gleichzeitig, UND-verknüpft).
+    // DEFAULT_FILTERS ist die Voreinstellung beim Laden / nach jedem Abruf.
+    const DEFAULT_FILTERS = { member: false, over0: true, noinvoice: false, notnv: false, neukunde: false };
+    const filters = { ...DEFAULT_FILTERS };
 
-    const CATEGORY_META = {
-        all:      { label: "Alle",             test: () => true },
-        koenigin: { label: "👑 Königinnen",    test: o => (o.categories || []).includes("koenigin") },
-        umlarv:   { label: "🔬 Umlarvaktionen", test: o => (o.categories || []).includes("umlarv") },
-        auffahrt: { label: "🚚 Auffahrten",    test: o => (o.categories || []).includes("auffahrt") },
-    };
+    // Filter-Elemente
+    const filterChecks = document.querySelectorAll(".filter-chk");
+    const btnClearFilters = document.getElementById("btnClearFilters");
 
-    // Pre-populate default dates (last 7 days to today)
-    const today = new Date();
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(today.getDate() - 7);
-    
-    apiEndDate.value = today.toISOString().substring(0, 10);
-    apiStartDate.value = sevenDaysAgo.toISOString().substring(0, 10);
+    // Default für die einmalige Erstbefüllung: Jahresanfang
+    initialStart.value = `${new Date().getFullYear()}-01-01`;
 
-    // Shopify Admin API Fetch Handler
-    btnApiFetch.addEventListener("click", () => {
-        const startDate = apiStartDate.value;
-        const endDate = apiEndDate.value;
-        const status = apiStatus.value;
+    function fmtUpdate(iso) {
+        if (!iso) return "noch nie";
+        const d = new Date(iso);
+        if (isNaN(d)) return iso;
+        const p = (n) => String(n).padStart(2, "0");
+        return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    }
 
-        if (!startDate || !endDate) {
-            alert("Bitte wählen Sie sowohl ein Start- als auch ein Enddatum aus.");
-            return;
+    // Lädt den lokalen Bestand und rendert die Tabelle.
+    function loadLocalOrders() {
+        storeStatus.textContent = "Lade lokalen Bestand…";
+        return fetch("/api/orders")
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) { storeStatus.textContent = "Fehler: " + data.error; return; }
+                allOrders = data.orders || [];
+                hasLocalData = !!data.last_update;
+                initialFillRow.style.display = hasLocalData ? "none" : "flex";
+                storeStatus.innerHTML = hasLocalData
+                    ? `<strong>${data.count}</strong> Bestellung(en) lokal · Letztes Update: ${fmtUpdate(data.last_update)}`
+                    : `Noch keine lokalen Daten. Startdatum wählen und auf „Aktualisieren" klicken, um zu importieren.`;
+
+                if (allOrders.length > 0) {
+                    renderOrders(allOrders);
+                    ordersCard.style.display = "block";
+                    totalBar.style.display = "flex";
+                    topbarActions.style.display = "flex";
+                } else {
+                    ordersCard.style.display = "none";
+                    totalBar.style.display = "none";
+                    topbarActions.style.display = "none";
+                }
+            })
+            .catch(err => { console.error(err); storeStatus.textContent = "Verbindungsfehler beim Laden der lokalen Daten."; });
+    }
+
+    // "Aktualisieren": inkrementelles Update von Shopify, dann lokal neu laden.
+    btnUpdate.addEventListener("click", () => {
+        const body = {};
+        if (!hasLocalData) {
+            if (!initialStart.value) { alert("Bitte ein Startdatum für die Erstbefüllung wählen."); return; }
+            body.start_date = initialStart.value;
         }
+        btnUpdate.disabled = true;
+        const original = btnUpdate.textContent;
+        btnUpdate.textContent = "Aktualisiere…";
+        storeStatus.textContent = "Hole Daten von Shopify…";
 
-        // Reset UI elements
-        ordersCard.style.display = "none";
-        totalBar.style.display = "none";
-        topbarActions.style.display = "none";
-        progressContainer.style.display = "none";
-
-        // Show loading state
-        btnApiFetch.disabled = true;
-        btnApiFetch.textContent = "Abrufen...";
-        btnApiFetch.style.opacity = "0.7";
-
-        fetch("/api/shopify/fetch", {
+        fetch("/api/orders/update", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                start_date: startDate,
-                end_date: endDate,
-                status: status
-            })
+            body: JSON.stringify(body)
         })
-        .then(res => res.json())
-        .then(data => {
-            btnApiFetch.disabled = false;
-            btnApiFetch.textContent = "Bestellungen abrufen";
-            btnApiFetch.style.opacity = "1";
-
-            if (data.error) {
-                alert("Fehler beim Abrufen: " + data.error);
-                return;
-            }
-
-            allOrders = data.orders;
-
-            renderOrders(allOrders);
-            ordersCard.style.display = "block";
-            totalBar.style.display = "flex";
-            topbarActions.style.display = "flex";
+        .then(res => res.json().then(d => ({ ok: res.ok, d })))
+        .then(({ ok, d }) => {
+            btnUpdate.disabled = false;
+            btnUpdate.textContent = original;
+            if (!ok || d.error) { alert("Fehler beim Aktualisieren: " + (d.error || "unbekannt")); loadLocalOrders(); return; }
+            loadLocalOrders().then(() => {
+                storeStatus.innerHTML += ` &nbsp;·&nbsp; <span style="color:var(--honey-700); font-weight:600;">${d.new} neu, ${d.updated} aktualisiert</span>`;
+            });
         })
         .catch(err => {
-            btnApiFetch.disabled = false;
-            btnApiFetch.textContent = "Bestellungen abrufen";
-            btnApiFetch.style.opacity = "1";
-            alert("Verbindungsfehler beim Abrufen der Shopify-Daten.");
+            btnUpdate.disabled = false;
+            btnUpdate.textContent = original;
             console.error(err);
+            alert("Verbindungsfehler beim Aktualisieren.");
         });
     });
 
@@ -213,94 +229,21 @@ document.addEventListener("DOMContentLoaded", function() {
         return parseFloat(val).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
     }
 
-    // Builds a clickable chip element
-    function makeChip(label, active, onClick) {
-        const chip = document.createElement("button");
-        chip.type = "button";
-        chip.textContent = label;
-        chip.style.cssText =
-            "padding:6px 14px; border-radius:999px; cursor:pointer; font-family:'Ubuntu',sans-serif; " +
-            "font-size:0.85rem; font-weight:600; transition:all 0.15s; " +
-            (active
-                ? "background:var(--honey-500); color:#fff; border:1px solid var(--honey-500);"
-                : "background:var(--white); color:var(--gray-700); border:1px solid var(--gray-300);");
-        chip.addEventListener("click", onClick);
-        return chip;
+    // Escapes a value for safe use inside an HTML attribute (note inputs).
+    function escAttr(s) {
+        return String(s == null ? "" : s)
+            .replace(/&/g, "&amp;").replace(/"/g, "&quot;")
+            .replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
-    // Sorts termin labels chronologically (e.g. "27.5. Linz" before "10.6. ...")
-    function terminSortKey(t) {
-        const m = t.match(/(\d{1,2})\.(\d{1,2})\./);
-        return m ? parseInt(m[2]) * 100 + parseInt(m[1]) : 9999;
-    }
-
-    // Renders the category filter chips (and Umlarv termin sub-chips)
-    function buildCategoryChips() {
-        categoryFilter.innerHTML = "";
-
-        const mainRow = document.createElement("div");
-        mainRow.style.cssText = "display:flex; flex-wrap:wrap; gap:8px; width:100%;";
-        categoryFilter.appendChild(mainRow);
-
-        Object.keys(CATEGORY_META).forEach(key => {
-            const count = key === "all"
-                ? allOrders.length
-                : allOrders.filter(CATEGORY_META[key].test).length;
-            if (key !== "all" && count === 0) return;
-            const chip = makeChip(`${CATEGORY_META[key].label} (${count})`, currentCategory === key, () => {
-                currentCategory = key;
-                currentTermin = null;
-                buildCategoryChips();
-                applyFilters();
-            });
-            mainRow.appendChild(chip);
-        });
-
-        // Termin sub-chips, only while the Umlarv category is active
-        if (currentCategory === "umlarv") {
-            const termine = {};
-            allOrders.forEach(o => (o.umlarv_termine || []).forEach(t => {
-                termine[t] = (termine[t] || 0) + 1;
-            }));
-            const sorted = Object.keys(termine).sort((a, b) => terminSortKey(a) - terminSortKey(b));
-            if (sorted.length) {
-                const subRow = document.createElement("div");
-                subRow.style.cssText =
-                    "display:flex; flex-wrap:wrap; gap:6px; width:100%; margin-top:4px; " +
-                    "padding-left:12px; border-left:3px solid var(--honey-200, #FDE68A);";
-                subRow.appendChild(makeChip(`Alle Termine (${allOrders.filter(CATEGORY_META.umlarv.test).length})`,
-                    currentTermin === null, () => { currentTermin = null; buildCategoryChips(); applyFilters(); }));
-                sorted.forEach(t => {
-                    subRow.appendChild(makeChip(`${t} (${termine[t]})`, currentTermin === t,
-                        () => { currentTermin = t; buildCategoryChips(); applyFilters(); }));
-                });
-                categoryFilter.appendChild(subRow);
-            }
-        }
-    }
-
-    // Returns true if an order passes the active category + termin filter
-    function passesCategory(order) {
-        if (!CATEGORY_META[currentCategory].test(order)) return false;
-        if (currentCategory === "umlarv" && currentTermin) {
-            return (order.umlarv_termine || []).includes(currentTermin);
-        }
-        return true;
-    }
-
-    // Start time (minutes since midnight) of an Umlarv slot, for sorting; large if none.
-    function itemMin(item) {
-        const m = ((item && item.variant) || "").match(/(\d{1,2}):(\d{2})/);
-        return m ? parseInt(m[1]) * 60 + parseInt(m[2]) : 99999;
-    }
-
-    // Line items shown for an order, limited to active category/termin (Versand raus).
-    function shownItems(order) {
-        let its = (order.items || []).filter(it => it.artikelnr !== "109008");
-        if (currentCategory !== "all") its = its.filter(it => it.category === currentCategory);
-        if (currentCategory === "umlarv" && currentTermin)
-            its = its.filter(it => it.umlarv_termin === currentTermin);
-        return its;
+    // Renders the "Rechnung" cell: links to the created invoice PDF(s) or "—".
+    function rechnungCellHtml(order) {
+        const list = order.rechnungen || [];
+        if (!list.length) return '<em style="color:var(--gray-400)">—</em>';
+        return list.map(b => {
+            const href = encodeURI(`/api/invoices/Rechnung ${b}.pdf`);
+            return `<a href="${href}" target="_blank" class="mono text-sm" style="white-space:nowrap;">${escAttr(b)}</a>`;
+        }).join("<br>");
     }
 
     // Builds one table row for order `idx` showing the given positions.
@@ -312,57 +255,113 @@ document.addEventListener("DOMContentLoaded", function() {
         tr.setAttribute("data-order-name", order.order_name);
 
         const isZero = order.total_brutto < 0.01;
-        if (isZero) {
-            tr.style.opacity = "0.65";
+        const noBill = !!order.nicht_verrechnen;  // "Nicht verrechnen" -> nicht in Rechnung
+        const kdnrMissing = !!order.kdnr_missing;  // fehlende Kundennummer -> keine Rechnung möglich
+        if (isZero || noBill) {
+            tr.style.opacity = "0.6";
+        } else if (kdnrMissing) {
+            // Fehlende Kundennummer: deutlich rot markieren (Rechnung gesperrt)
+            tr.style.backgroundColor = "#FDF2F2";
+            tr.style.borderLeft = "4px solid #EF4444";
         } else if (order.member_missing_discount) {
             // Mitglied ohne Rabatt: dezent rot markieren (Hinweis für die Rechnung)
             tr.style.backgroundColor = "#FDF2F2";
             tr.style.borderLeft = "4px solid #EF4444";
         }
-        const checkedAttr = isZero ? "" : "checked";
+        // "Nicht verrechnen" und fehlende Kundennummer sperren die Auswahl.
+        const checkedAttr = (isZero || noBill || kdnrMissing) ? "" : "checked";
+        const selDisabled = (noBill || kdnrMissing) ? "disabled" : "";
         const produkte = items.length
             ? items.map(it => shortProduct(it.name)).join("<br>")
             : '<em style="color:var(--gray-400)">—</em>';
         const termine = items.length
             ? items.map(it => lieferTermin(it)).join("<br>")
             : "—";
+        const memberWarnBadge = order.member_missing_discount
+            ? `<div style="margin-top:4px; display:inline-block; padding:2px 8px; border-radius:999px; background:#FEE2E2; color:#B91C1C; font-size:0.72rem; font-weight:600; white-space:nowrap;">⚠ Mitglied ohne Rabatt</div>`
+            : "";
+        // Fehlende Kundennummer: Warnhinweis; Rechnung erst nach Eingabe möglich.
+        const kdnrWarnBadge = kdnrMissing
+            ? `<div style="margin-top:4px; display:inline-block; padding:2px 8px; border-radius:999px; background:#FEE2E2; color:#B91C1C; font-size:0.72rem; font-weight:600; white-space:nowrap;">⚠ Kundennummer fehlt</div>`
+            : "";
+
+        // Rücküberweisung aus Shopify (automatisch). Teilweise = orange, vollständig = rot.
+        const refundBadge = refundBadgeHtml(order);
 
         tr.innerHTML = `
-            <td style="text-align: center; vertical-align: top;"><input type="checkbox" class="order-chk" data-idx="${idx}" ${checkedAttr}></td>
-            <td class="mono text-bold" style="vertical-align: top;">${order.order_name}</td>
-            <td style="vertical-align: top;">${order.b_name || '<em style="color:var(--gray-400)">unbekannt</em>'}</td>
+            <td style="text-align: center; vertical-align: top;"><input type="checkbox" class="order-chk" data-idx="${idx}" ${checkedAttr} ${selDisabled}></td>
+            <td class="mono text-bold" style="vertical-align: top;"><button type="button" class="order-detail-link" data-idx="${idx}" title="Details anzeigen" style="background:none; border:none; padding:0; cursor:pointer; font:inherit; color:var(--honey-700); text-decoration:underline; text-underline-offset:2px;">${order.order_name}</button></td>
+            <td style="vertical-align: top;">${order.b_name || '<em style="color:var(--gray-400)">unbekannt</em>'}${kdnrWarnBadge}${memberWarnBadge}</td>
             <td class="cell-produkt" style="vertical-align: top;">${produkte}</td>
             <td class="cell-termin mono text-sm" style="vertical-align: top; white-space: nowrap;">${termine}</td>
+            <td class="mono text-bold" style="vertical-align: top; text-align:right; white-space:nowrap;">€ ${order.total_brutto_str}</td>
+            <td style="vertical-align: top; font-size:0.82rem; color:var(--gray-700);">${order.payment_method || '<em style="color:var(--gray-400)">—</em>'}</td>
+            <td class="cell-rechnung" style="vertical-align: top;">${rechnungCellHtml(order)}</td>
+            <td style="text-align:center; vertical-align: top;"><input type="checkbox" class="flag-nv" data-idx="${idx}" ${noBill ? "checked" : ""}></td>
+            <td style="text-align:center; vertical-align: top;">${refundBadge}<input type="checkbox" class="flag-rb" data-idx="${idx}" ${order.rueckueberwiesen ? "checked" : ""}></td>
         `;
         return tr;
     }
 
-    // (Re)builds the table body for the active category/termin/search.
-    //  - In a specific category: ONE row per position, so each Umlarv slot sorts
-    //    by its own time (an order with two slots becomes two correctly-placed rows).
-    //  - In "Alle": one row per order with its positions stacked.
+    // Badge für die aus Shopify abgeleitete Rücküberweisung (teilweise/vollständig).
+    function refundBadgeHtml(order) {
+        if (!order || !order.refund_type || order.refund_type === "none") return "";
+        const full = order.refund_type === "full";
+        const label = full ? "Vollständig erstattet" : "Teilweise erstattet";
+        const bg = full ? "#FEE2E2" : "#FEF3C7";
+        const fg = full ? "#B91C1C" : "#92400E";
+        const amount = order.refunded_amount_str ? ` € ${order.refunded_amount_str}` : "";
+        return `<div title="Aus Shopify" style="margin-bottom:4px; display:inline-block; padding:2px 8px; border-radius:999px; background:${bg}; color:${fg}; font-size:0.72rem; font-weight:600; white-space:nowrap;">↩ ${label}${amount}</div><br>`;
+    }
+
+    // Erstellt für genau diese Bestellung eine neue Rechnung (ersetzt die alte).
+    async function regenerateInvoice(idx, btn, statusEl) {
+        const order = allOrders[idx];
+        if (order.kdnr_missing) {
+            statusEl.style.color = "var(--red-600)";
+            statusEl.textContent = "⚠ Kundennummer fehlt – bitte zuerst im Detailfenster erfassen.";
+            return;
+        }
+        const original = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = "Erstelle…";
+        statusEl.style.color = "var(--gray-500)";
+        statusEl.textContent = "Bitte warten…";
+        try {
+            const res = await fetch("/api/regenerate_single", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ order })
+            });
+            const d = await res.json();
+            if (d.success) {
+                const pdfHref = encodeURI(`/api/invoices/Rechnung ${d.belegnummer}.pdf`);
+                const replacedTxt = (d.replaced && d.replaced.length)
+                    ? ` · ersetzt ${d.replaced.join(", ")}` : "";
+                statusEl.style.color = "var(--honey-700)";
+                statusEl.innerHTML = `✓ Erstellt: <strong>${d.belegnummer}</strong>${replacedTxt} · <a href="${pdfHref}" target="_blank">PDF öffnen</a>`;
+                // "Ersetzen": die neue Belegnummer ist nun die einzige Rechnung der Bestellung
+                order.rechnungen = [d.belegnummer];
+                const cell = ordersTableBody.querySelector(`tr.order-row[data-idx="${idx}"] .cell-rechnung`);
+                if (cell) cell.innerHTML = rechnungCellHtml(order);
+            } else {
+                statusEl.style.color = "#C0392B";
+                statusEl.textContent = "Fehler: " + (d.msg || d.error || "unbekannt");
+            }
+        } catch (err) {
+            console.error(err);
+            statusEl.style.color = "#C0392B";
+            statusEl.textContent = "Verbindungsfehler beim Erstellen.";
+        } finally {
+            btn.disabled = false;
+            btn.textContent = original;
+        }
+    }
+
+    // (Re)builds the table body: one row per order, filtered by the search box.
+    // (Kategorie-/Termin-Listen leben jetzt im Bereich "Imkerei".)
     function applyFilters() {
         const query = searchInput.value.toLowerCase().trim();
-        const entries = [];
-
-        allOrders.forEach((order, idx) => {
-            if (!passesCategory(order)) return;
-            const text = `${order.order_name} ${order.b_name} ${order.kdnr}`.toLowerCase();
-            if (!text.includes(query)) return;
-
-            const its = shownItems(order);
-            if (currentCategory === "all" || its.length === 0) {
-                entries.push({ idx, items: its });
-            } else {
-                its.forEach(it => entries.push({ idx, items: [it] }));
-            }
-        });
-
-        if (currentCategory === "umlarv") {
-            entries.sort((a, b) => itemMin(a.items[0]) - itemMin(b.items[0]) || a.idx - b.idx);
-        } else {
-            entries.sort((a, b) => a.idx - b.idx);
-        }
 
         // Preserve the current per-order selection across rebuilds.
         const hadRows = ordersTableBody.querySelector(".order-chk") !== null;
@@ -371,15 +370,50 @@ document.addEventListener("DOMContentLoaded", function() {
         );
 
         ordersTableBody.innerHTML = "";
-        entries.forEach(e => {
-            const row = buildRow(e.idx, e.items);
-            if (hadRows) row.querySelector(".order-chk").checked = checkedIdx.has(String(e.idx));
+        let shown = 0;
+        allOrders.forEach((order, idx) => {
+            // Kombinierbare Filter (UND): nur Bestellungen, die alle aktiven Kriterien erfüllen
+            if (filters.member && !order.member_missing_discount) return;
+            if (filters.over0 && !(order.total_brutto > 0.005)) return;
+            if (filters.noinvoice && (order.rechnungen || []).length > 0) return;
+            if (filters.notnv && order.nicht_verrechnen) return;
+            if (filters.neukunde && !order.kdnr_missing) return;
+            const text = `${order.order_name} ${order.b_name} ${order.kdnr}`.toLowerCase();
+            if (!text.includes(query)) return;
+
+            const items = (order.items || []).filter(it => it.artikelnr !== "109008");
+            const row = buildRow(idx, items);
+            if (hadRows) row.querySelector(".order-chk").checked = checkedIdx.has(String(idx));
             ordersTableBody.appendChild(row);
+            shown++;
         });
 
-        ordersCount.textContent = entries.length;
+        ordersCount.textContent = shown;
         updateTotalBar();
     }
+
+    // Spiegelt das filters-Objekt in die Checkboxen + "Zurücksetzen"-Button.
+    function syncFilterUI() {
+        filterChecks.forEach(chk => { chk.checked = !!filters[chk.dataset.filter]; });
+        // Button nur zeigen, wenn vom Standard abgewichen wurde
+        const changed = Object.keys(DEFAULT_FILTERS).some(k => filters[k] !== DEFAULT_FILTERS[k]);
+        btnClearFilters.style.display = changed ? "" : "none";
+    }
+
+    // Filter-Checkboxen
+    filterChecks.forEach(chk => {
+        chk.addEventListener("change", () => {
+            filters[chk.dataset.filter] = chk.checked;
+            syncFilterUI();
+            applyFilters();
+        });
+    });
+
+    btnClearFilters.addEventListener("click", () => {
+        Object.assign(filters, DEFAULT_FILTERS);
+        syncFilterUI();
+        applyFilters();
+    });
 
     // Compact delivery date for a line item, derived from its variant.
     function lieferTermin(item) {
@@ -413,18 +447,61 @@ document.addEventListener("DOMContentLoaded", function() {
             .forEach(c => { c.checked = checked; });
     }
 
+    // Persistiert einen Status-Marker (Nicht verrechnen / Rücküberwiesen) lokal.
+    function saveFlag(orderName, field, value) {
+        fetch("/api/orders/flags", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ order_name: orderName, [field]: value })
+        }).catch(err => console.error("Flag speichern fehlgeschlagen:", err));
+    }
+
+    // Persistiert einen Positions-Hinweis (je Line-Item) lokal.
+    function saveLineNote(orderName, lineId, hinweis) {
+        fetch("/api/orders/line_note", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ order_name: orderName, line_id: lineId, hinweis: hinweis })
+        }).catch(err => console.error("Hinweis speichern fehlgeschlagen:", err));
+    }
+
     // Event delegation for the (re-built) order rows
     ordersTableBody.addEventListener("change", (e) => {
-        if (e.target.classList.contains("order-chk")) {
-            syncOrderSelection(e.target.dataset.idx, e.target.checked);
+        const t = e.target;
+        if (t.classList.contains("order-chk")) {
+            syncOrderSelection(t.dataset.idx, t.checked);
             updateTotalBar();
+        } else if (t.classList.contains("flag-nv")) {
+            const order = allOrders[+t.dataset.idx];
+            order.nicht_verrechnen = t.checked;
+            saveFlag(order.order_name, "nicht_verrechnen", t.checked);
+            // Auswahl für die Rechnungserstellung sperren/freigeben
+            const row = t.closest("tr.order-row");
+            const sel = row.querySelector(".order-chk");
+            if (t.checked) {
+                sel.checked = false;
+                sel.disabled = true;
+                row.style.opacity = "0.6";
+            } else {
+                sel.disabled = false;
+                row.style.opacity = (order.total_brutto < 0.01) ? "0.6" : "";
+            }
+            updateTotalBar();
+        } else if (t.classList.contains("flag-rb")) {
+            const order = allOrders[+t.dataset.idx];
+            order.rueckueberwiesen = t.checked;
+            saveFlag(order.order_name, "rueckueberwiesen", t.checked);
         }
     });
     ordersTableBody.addEventListener("click", (e) => {
+        // Detailansicht öffnen (eigenes Fenster)
+        const detailLink = e.target.closest(".order-detail-link");
+        if (detailLink) { openOrderDetail(+detailLink.dataset.idx); return; }
         if (e.target.tagName === "INPUT") return;
         const row = e.target.closest("tr.order-row");
         if (!row) return;
         const chk = row.querySelector(".order-chk");
+        if (chk.disabled) return;  // "Nicht verrechnen" -> nicht auswählbar
         chk.checked = !chk.checked;
         syncOrderSelection(chk.dataset.idx, chk.checked);
         updateTotalBar();
@@ -432,10 +509,10 @@ document.addEventListener("DOMContentLoaded", function() {
 
     // Renders the list of orders (called after a fetch; allOrders is already set)
     function renderOrders() {
-        currentCategory = "all";
-        currentTermin = null;
         ordersTableBody.innerHTML = "";
-        buildCategoryChips();
+        // jeder neue Abruf startet mit der Voreinstellung (z. B. "Über 0 €")
+        Object.assign(filters, DEFAULT_FILTERS);
+        syncFilterUI();
         applyFilters();
     }
 
@@ -447,7 +524,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
         document.querySelectorAll(".order-chk").forEach(chk => {
             const row = chk.closest("tr");
-            if (chk.checked && row && row.style.display !== "none") {
+            if (chk.checked && !chk.disabled && row && row.style.display !== "none") {
                 const idx = chk.getAttribute("data-idx");
                 if (!seen.has(idx)) {
                     seen.add(idx);
@@ -464,10 +541,10 @@ document.addEventListener("DOMContentLoaded", function() {
         btnGenerate.style.opacity = (selectedCount === 0) ? "0.5" : "1";
     }
 
-    // Returns currently visible checkboxes (respecting the active filter)
+    // Returns currently visible, selectable checkboxes (respecting filter + "Nicht verrechnen")
     function visibleCheckboxes() {
         return Array.from(document.querySelectorAll(".order-chk"))
-            .filter(chk => { const r = chk.closest("tr"); return r && r.style.display !== "none"; });
+            .filter(chk => { const r = chk.closest("tr"); return !chk.disabled && r && r.style.display !== "none"; });
     }
 
     // Select/Deselect all handlers (operate on the visible/filtered rows)
@@ -579,6 +656,268 @@ document.addEventListener("DOMContentLoaded", function() {
             location.reload();
         });
     });
+
+    // ── Detail-Fenster je Bestellung ─────────────────────────────────
+    const detailOverlay = document.getElementById("detailOverlay");
+    const detailBody = document.getElementById("detailBody");
+    const detailTitle = document.getElementById("detailTitle");
+
+    function escHtml(s) {
+        return (s == null ? "" : String(s)).replace(/[&<>"]/g, c => (
+            { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]
+        ));
+    }
+    function fmtDate(iso) {
+        if (!iso) return "—";
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return escHtml(iso);
+        return String(d.getDate()).padStart(2, "0") + "." +
+               String(d.getMonth() + 1).padStart(2, "0") + "." + d.getFullYear();
+    }
+    const FIN_LABELS = {
+        paid: "Bezahlt", pending: "Offen", authorized: "Autorisiert",
+        partially_paid: "Teilweise bezahlt", partially_refunded: "Teilweise erstattet",
+        refunded: "Erstattet", voided: "Storniert", expired: "Abgelaufen",
+    };
+
+    function openOrderDetail(idx) {
+        const o = allOrders[idx];
+        if (!o) return;
+        const si = o.shipping_info || {};
+        const row = (label, value, alignRight) =>
+            `<div style="display:flex; gap:10px; padding:3px 0;">
+                <div style="min-width:150px; color:var(--gray-500); font-size:0.82rem;">${label}</div>
+                <div style="flex:1; font-size:0.88rem; color:var(--gray-900);${alignRight ? " text-align:right;" : ""}">${value || "—"}</div>
+            </div>`;
+        const section = (title, inner) =>
+            `<div style="margin-bottom:18px;">
+                <div style="font-size:0.74rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--honey-700); border-bottom:1px solid var(--gray-200); padding-bottom:4px; margin-bottom:8px;">${title}</div>
+                ${inner}
+            </div>`;
+
+        // Kunde / Rechnungsadresse
+        const billing = (o.cust_addr || []).filter(Boolean).map(escHtml).join("<br>");
+        // Versand
+        const shipAddr = (si.address_lines || []).filter(Boolean).map(escHtml).join("<br>");
+        const tracking = (si.tracking || []).map(t => {
+            const label = `${t.company ? escHtml(t.company) + " " : ""}${escHtml(t.number)}`;
+            return t.url ? `<a href="${escHtml(t.url)}" target="_blank" rel="noopener" style="color:var(--blue-600);">${label}</a>` : label;
+        }).join("<br>");
+        // Zahlung / Erstattung
+        const refundLine = (o.refund_type && o.refund_type !== "none")
+            ? row("Rückerstattung", `<span style="color:var(--red-600); font-weight:600;">${o.refund_type === "full" ? "Vollständig" : "Teilweise"} − € ${escHtml(o.refunded_amount_str)}</span>`)
+            : "";
+        // Rechnungen
+        const rechnungen = (o.rechnungen && o.rechnungen.length)
+            ? o.rechnungen.map(escHtml).join(", ") : "";
+        // Kundennummer (editierbar). Fehlt sie, ist die Rechnung gesperrt, bis eine erfasst wird.
+        const kdnrVal = o.kdnr_missing ? "" : (o.kdnr || "");
+        const kdnrField =
+            `<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <input id="detailKdnrInput" type="text" value="${escAttr(kdnrVal)}" placeholder="Kundennummer"
+                       style="padding:6px 10px; border:1px solid ${o.kdnr_missing ? "#EF4444" : "var(--gray-300)"}; border-radius:6px; font-family:'Ubuntu Mono',monospace; font-size:0.88rem; width:170px;">
+                <button type="button" id="detailKdnrSave" class="btn btn-primary btn-sm">Speichern</button>
+                <span id="detailKdnrStatus" style="font-size:0.8rem;"></span>
+            </div>` +
+            (o.kdnr_missing
+                ? `<div style="margin-top:5px; color:var(--red-600); font-size:0.8rem; font-weight:600;">⚠ Kundennummer fehlt – die Rechnung kann erst nach Eingabe einer Kundennummer erstellt werden.</div>`
+                : "");
+
+        // Positionen
+        const tdR = "padding:5px 6px; border-bottom:1px solid var(--gray-100); font-size:0.82rem;";
+        const itemRows = (o.items || []).map(it => `
+            <tr>
+                <td style="${tdR}">
+                    <span class="mono" style="color:var(--gray-500);">${escHtml(it.artikelnr || "")}</span> ${escHtml(it.name)}
+                    ${it.variant ? `<br><span style="color:var(--gray-500);">${escHtml(it.variant)}</span>` : ""}
+                    ${it.details ? `<br><span style="color:var(--gray-500); font-size:0.78rem;">${escHtml(it.details)}</span>` : ""}
+                    ${it.line_id
+                        ? `<br><input type="text" class="detail-line-note" data-idx="${idx}" data-lineid="${escAttr(it.line_id)}" value="${escAttr(it.hinweis || "")}" placeholder="Hinweis für die Rechnung…" style="margin-top:5px; width:100%; max-width:440px; padding:5px 9px; font-size:0.8rem; border:1px solid var(--gray-300); border-radius:6px; outline:none; font-family:'Ubuntu',sans-serif;">`
+                        : (it.hinweis ? `<br><span style="color:var(--blue-600); font-size:0.78rem;">Hinweis: ${escHtml(it.hinweis)}</span>` : "")}
+                </td>
+                <td style="${tdR} white-space:nowrap;">${escHtml(it.termin || "")}</td>
+                <td style="${tdR} text-align:center; white-space:nowrap;">${escHtml(it.menge_str)}</td>
+                <td style="${tdR} text-align:right; white-space:nowrap;">€ ${escHtml(it.einzelpreis_str)}</td>
+                <td style="${tdR} text-align:right; white-space:nowrap;">€ ${escHtml(it.gesamtpreis_str)}</td>
+            </tr>`).join("") || `<tr><td style="${tdR}" colspan="5"><em style="color:var(--gray-400)">Keine Positionen</em></td></tr>`;
+
+        const taxRows = (o.taxes_list || []).map(t =>
+            row(`USt ${escHtml(t.rate_str)} % (Basis € ${escHtml(t.base_str)})`, `€ ${escHtml(t.value_str)}`, true)
+        ).join("");
+
+        detailTitle.textContent = `Bestelldetails ${o.order_name || ""}`;
+        detailBody.innerHTML =
+            section("Bestellung",
+                row("Bestellnummer", `<span class="mono">${escHtml(o.order_name)}</span>`) +
+                row("Bestelldatum", fmtDate(o.created_at)) +
+                row("Zahlstatus", escHtml(FIN_LABELS[o.financial_status] || o.financial_status)) +
+                row("Kundennummer", kdnrField) +
+                row("Mitglied", o.is_member ? "Ja" : "Nein") +
+                (rechnungen ? row("Rechnung(en)", `<span class="mono">${rechnungen}</span>`) : "")
+            ) +
+            section("Kunde / Rechnungsadresse",
+                row("Name", escHtml(o.b_name)) +
+                (o.email ? row("E-Mail", escHtml(o.email)) : "") +
+                (si.phone ? row("Telefon", escHtml(si.phone)) : "") +
+                row("Adresse", billing)
+            ) +
+            section("Versand",
+                row("Versandart", escHtml(si.method)) +
+                row("Versandkosten", `€ ${escHtml(si.cost_str || "0,00")}`) +
+                row("Versandstatus", escHtml(si.status_label)) +
+                row("Lieferadresse", shipAddr || '<span style="color:var(--gray-400)">wie Rechnungsadresse / Abholung</span>') +
+                (tracking ? row("Sendungsverfolgung", tracking) : "")
+            ) +
+            section("Zahlung",
+                row("Zahlungsart", escHtml(o.payment_method)) +
+                refundLine
+            ) +
+            section("Positionen",
+                `<table style="width:100%; border-collapse:collapse;">
+                    <thead><tr>
+                        <th style="${tdR} text-align:left; color:var(--gray-600);">Bezeichnung</th>
+                        <th style="${tdR} text-align:left; color:var(--gray-600);">Termin</th>
+                        <th style="${tdR} text-align:center; color:var(--gray-600);">Menge</th>
+                        <th style="${tdR} text-align:right; color:var(--gray-600);">Einzel</th>
+                        <th style="${tdR} text-align:right; color:var(--gray-600);">Gesamt</th>
+                    </tr></thead>
+                    <tbody>${itemRows}</tbody>
+                </table>`
+            ) +
+            section("Summen",
+                row("Zwischensumme", `€ ${escHtml(o.total_brutto_str)}`, true) +
+                taxRows +
+                ((o.refund_type && o.refund_type !== "none")
+                    ? row("Rückerstattung", `<span style="color:var(--red-600); font-weight:600;">− € ${escHtml(o.refunded_amount_str)}</span>`, true)
+                    : "") +
+                row("<strong>Endsumme</strong>", `<strong>€ ${escHtml(o.endsumme_str || o.total_brutto_str)}</strong>`, true)
+            ) +
+            `<div style="border-top:1px solid var(--gray-200); padding-top:14px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+                <button type="button" id="detailRegen" class="btn btn-primary btn-sm">⚡ Rechnung neu erstellen</button>
+                <button type="button" id="detailLabel" class="btn btn-secondary btn-sm">🏷 Versandetikett drucken</button>
+                <span id="detailRegenStatus" style="font-size:0.83rem;"></span>
+            </div>`;
+
+        detailOverlay.style.display = "flex";
+
+        // Kundennummer speichern (Button + Enter)
+        const kdnrSaveBtn = document.getElementById("detailKdnrSave");
+        const kdnrInput = document.getElementById("detailKdnrInput");
+        if (kdnrSaveBtn) kdnrSaveBtn.addEventListener("click", () => saveKdnr(idx));
+        if (kdnrInput) kdnrInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); saveKdnr(idx); } });
+
+        // Hinweise je Position speichern (beim Verlassen des Feldes)
+        detailBody.querySelectorAll(".detail-line-note").forEach(inp => {
+            inp.addEventListener("change", () => {
+                const lineId = inp.dataset.lineid;
+                const text = inp.value.trim();
+                const item = (o.items || []).find(it => String(it.line_id) === lineId);
+                if (item) item.hinweis = text;
+                saveLineNote(o.order_name, lineId, text);
+            });
+        });
+
+        // Rechnung aus dem Detailfenster (neu) erstellen
+        const regenBtn = document.getElementById("detailRegen");
+        const regenStatus = document.getElementById("detailRegenStatus");
+        if (regenBtn) regenBtn.addEventListener("click", () => regenerateInvoice(idx, regenBtn, regenStatus));
+
+        // Versandetikett drucken
+        const labelBtn = document.getElementById("detailLabel");
+        if (labelBtn) labelBtn.addEventListener("click", () => printShippingLabel(idx));
+    }
+
+    // Etikettgröße (Etikettendrucker, Querformat). Bei Bedarf hier zentral anpassen.
+    const LABEL_WIDTH = "100mm";
+    const LABEL_HEIGHT = "60mm";
+
+    // Öffnet ein Druckfenster mit dem Versandetikett (Lieferadresse, sonst Rechnungsadresse).
+    function printShippingLabel(idx) {
+        const o = allOrders[idx];
+        if (!o) return;
+        const si = o.shipping_info || {};
+        const lines = ((si.address_lines && si.address_lines.length) ? si.address_lines : (o.cust_addr || []))
+            .filter(Boolean);
+        const recipient = lines.map(l => `<span class="line">${escHtml(l)}</span>`).join("")
+            || '<span class="line">—</span>';
+        // KdNr nur anzeigen, wenn eine echte Nummer vorliegt (nicht bei Neukunden).
+        const hasKdnr = o.kdnr && !o.kdnr_missing && o.kdnr !== "Neukunde";
+        const ref = `Bestellung ${escHtml(o.order_name || "")}${hasKdnr ? " · KdNr " + escHtml(o.kdnr) : ""}`;
+
+        const html =
+`<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">
+<title>Versandetikett ${escHtml(o.order_name || "")}</title>
+<style>
+  @page { size: ${LABEL_WIDTH} ${LABEL_HEIGHT}; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #000; }
+  /* Feste Etikettgröße + overflow:hidden, damit nie ein zweites Etikett gedruckt wird. */
+  .label { width: ${LABEL_WIDTH}; height: ${LABEL_HEIGHT}; padding: 4mm; display: flex; flex-direction: column; overflow: hidden; }
+  .sender { font-size: 7pt; color: #333; border-bottom: 0.3mm solid #888; padding-bottom: 2mm; margin-bottom: 6mm; }
+  .recipient { flex: 1; font-size: 13pt; font-weight: 700; line-height: 1.4; }
+  .recipient .line { display: block; }
+  .ref { font-size: 7.5pt; color: #333; border-top: 0.3mm solid #888; padding-top: 2mm; margin-top: 6mm; }
+  @media screen { body { background: #e9e9e9; padding: 12mm; } .label { background: #fff; box-shadow: 0 0 6px rgba(0,0,0,0.25); } }
+</style></head>
+<body>
+  <div class="label">
+    <div class="sender">Absender: OÖ Landesverband für Bienenzucht · Pachmayrstraße 57 · 4040 Linz</div>
+    <div class="recipient">${recipient}</div>
+    <div class="ref">${ref}</div>
+  </div>
+  <script>window.onload=function(){window.print();};window.onafterprint=function(){window.close();};<\/script>
+</body></html>`;
+
+        const w = window.open("", "_blank", "width=420,height=640");
+        if (!w) { alert("Bitte Pop-ups für diese Seite erlauben, um das Etikett zu drucken."); return; }
+        w.document.open();
+        w.document.write(html);
+        w.document.close();
+    }
+
+    // Speichert die manuell erfasste Kundennummer und entsperrt die Bestellung.
+    async function saveKdnr(idx) {
+        const o = allOrders[idx];
+        const input = document.getElementById("detailKdnrInput");
+        const status = document.getElementById("detailKdnrStatus");
+        const val = (input.value || "").trim();
+        if (!val) {
+            status.style.color = "var(--red-600)";
+            status.textContent = "Bitte eine Kundennummer eingeben.";
+            return;
+        }
+        status.style.color = "var(--gray-500)";
+        status.textContent = "Speichere…";
+        try {
+            const res = await fetch("/api/orders/flags", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ order_name: o.order_name, kdnr: val })
+            });
+            const d = await res.json();
+            if (d.success) {
+                o.kdnr = val;
+                o.kdnr_missing = false;
+                applyFilters();        // Liste neu aufbauen: Warnung/Sperre entfällt
+                openOrderDetail(idx);  // Detailfenster aktualisieren
+            } else {
+                status.style.color = "var(--red-600)";
+                status.textContent = "Fehler beim Speichern.";
+            }
+        } catch (err) {
+            status.style.color = "var(--red-600)";
+            status.textContent = "Verbindungsfehler.";
+        }
+    }
+
+    function closeDetail() { detailOverlay.style.display = "none"; }
+    document.getElementById("detailClose").addEventListener("click", closeDetail);
+    detailOverlay.addEventListener("click", (e) => { if (e.target === detailOverlay) closeDetail(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && detailOverlay.style.display === "flex") closeDetail(); });
+
+    // Beim Öffnen den lokalen Bestand laden (kein Live-Abruf mehr)
+    loadLocalOrders();
 });
 </script>
 {% endblock %}

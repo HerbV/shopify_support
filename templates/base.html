@@ -407,7 +407,22 @@
             <a href="{{ url_for('archive') }}" class="nav-item {% if request.endpoint == 'archive' %}active{% endif %}">
                 <span class="nav-icon">📁</span> Rechnungsarchiv
             </a>
+            <a href="{{ url_for('imkerei') }}" class="nav-item {% if request.endpoint == 'imkerei' %}active{% endif %}">
+                <span class="nav-icon">🐝</span> Imkerei
+            </a>
         </div>
+
+        {% if current_user %}
+        <div class="sidebar-section" style="margin-top:auto;">
+            <div class="section-label">Angemeldet</div>
+            <div class="nav-item" style="cursor:default;">
+                <span class="nav-icon">👤</span> {{ current_user }}
+            </div>
+            <a href="{{ url_for('logout') }}" class="nav-item">
+                <span class="nav-icon">🚪</span> Abmelden
+            </a>
+        </div>
+        {% endif %}
 
         <div class="sidebar-footer">
             Rechnungsverwaltung v2.0 — Webapp

@@ -10,6 +10,9 @@ services:
     volumes:
       # Persist generated PDF invoices on the host system
       - ./Rechnungen_Erstellt:/app/Rechnungen_Erstellt
+      # Persist the local order store (orders.json, flags, line notes,
+      # invoice->order mapping) so the last state survives restarts/rebuilds
+      - ./data:/app/data
       # Mount env file dynamically for MS SQL database connections
       - ./env:/app/env
     environment:

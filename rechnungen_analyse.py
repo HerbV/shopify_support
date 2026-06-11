@@ -30,7 +30,7 @@ def parse_rechnung(pdf_path):
     belegnummer = extract(r"Belegnummer\s+([\d\-]+)")
     datum = extract(r"Datum\s+([\d.]+)")
     kundennummer = extract(r"Kundennummer\s+(\S+)")
-    bearbeiter = extract(r"Bearbeiter\s+(.+?)(?:\n|$)")
+    bearbeiter = extract(r"Bearbeiter(?:\*in)?\s+(.+?)(?:\n|$)")
 
     # Kundenname: erste Zeile nach der Absenderzeile (vor "Rechnung")
     kunde = ""
@@ -244,7 +244,7 @@ def main():
         uebersicht,
         headers=[
             "Belegnummer", "Datum", "KdNr", "Kunde",
-            "Bearbeiter", "MwSt-Satz", "MwSt-Betrag", "Endsumme",
+            "Bearbeiter*in", "MwSt-Satz", "MwSt-Betrag", "Endsumme",
         ],
         tablefmt="grid",
     ))

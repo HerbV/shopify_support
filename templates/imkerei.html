@@ -1,0 +1,330 @@
+{% extends "base.html" %}
+{% block title %}Imkerei — Rechnungsverwaltung{% endblock %}
+
+{% block topbar %}
+<div class="topbar">
+    <h1>Imkerei <span>LV</span></h1>
+    <div class="topbar-actions" id="topbarActions" style="display:none;">
+        <button class="btn btn-primary" id="btnExportCsv">📦 Listen als CSV (ZIP)</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Lokaler Bestand + Aktualisierung -->
+<div style="background: var(--white); border-radius: 12px; border: 1px solid var(--gray-200); padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+    <div>
+        <h3 style="font-weight: 500; color: var(--gray-800); display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+            <span>🐝</span> Bestellungen nach Kategorie
+        </h3>
+        <p style="margin: 0 0 6px; font-size: 0.88rem; color: var(--gray-500); max-width: 640px;">
+            Teilt die lokal gespeicherten Bestellungen in <strong>Königinnen</strong>, <strong>Umlarvaktionen</strong>
+            und <strong>Belegstellen-Auffahrten</strong> auf. Eine Bestellung kann in mehreren Listen erscheinen.
+        </p>
+        <div id="storeStatus" style="font-size: 0.88rem; color: var(--gray-500);">Lade lokalen Bestand…</div>
+    </div>
+    <button class="btn btn-primary" id="btnUpdate" style="font-weight: 600;">🔄 Aktualisieren</button>
+</div>
+
+<!-- Statusmeldung -->
+<div id="statusMsg" style="display:none; margin-top: 16px; font-size: 0.9rem; color: var(--gray-600);"></div>
+
+<!-- Ergebnis-Container (Kategorien) -->
+<div id="resultsContainer" style="margin-top: 20px;"></div>
+
+<!-- Leerzustand -->
+<div class="table-card" id="emptyState" style="display:none; padding: 60px; text-align: center; color: var(--gray-400); margin-top: 10px;">
+    <div style="font-size: 3rem; margin-bottom: 12px;">🐝</div>
+    <h3>Noch keine lokalen Daten</h3>
+    <p style="margin-top: 8px; font-size: 0.9rem;">Klicke auf „Aktualisieren", um Bestellungen von Shopify zu importieren.</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const btnUpdate = document.getElementById("btnUpdate");
+    const storeStatus = document.getElementById("storeStatus");
+    const btnExport = document.getElementById("btnExportCsv");
+    const topbarActions = document.getElementById("topbarActions");
+    const resultsContainer = document.getElementById("resultsContainer");
+    const emptyState = document.getElementById("emptyState");
+    const statusMsg = document.getElementById("statusMsg");
+
+    function esc(s) {
+        return String(s == null ? "" : s)
+            .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function paidBadge(paid) {
+        return paid
+            ? `<span style="display:inline-block; padding:2px 8px; border-radius:10px; font-size:0.78rem; font-weight:600; background:#E6F4EA; color:#1E7E34;">✓ Bezahlt</span>`
+            : `<span style="display:inline-block; padding:2px 8px; border-radius:10px; font-size:0.78rem; font-weight:600; background:#FDECEA; color:#C0392B;">Offen</span>`;
+    }
+
+    function fmtUpdate(iso) {
+        if (!iso) return "noch nie";
+        const d = new Date(iso);
+        if (isNaN(d)) return iso;
+        const p = (n) => String(n).padStart(2, "0");
+        return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    }
+
+    function setStatus(text) {
+        if (!text) { statusMsg.style.display = "none"; return; }
+        statusMsg.textContent = text;
+        statusMsg.style.display = "block";
+    }
+
+    function flatCardHtml(cat) {
+        let rowsHtml;
+        if (!cat.rows || cat.rows.length === 0) {
+            rowsHtml = `<tr><td colspan="6" style="text-align:center; color: var(--gray-400); padding: 28px;">Keine Bestellungen in dieser Kategorie</td></tr>`;
+        } else {
+            rowsHtml = cat.rows.map((r) => `
+                <tr>
+                    <td class="mono text-bold">${esc(r.order)}</td>
+                    <td class="text-sm">${esc(r.date)}</td>
+                    <td class="text-sm">${esc(r.customer)}</td>
+                    <td class="mono text-sm" style="text-align:center;">${esc(r.qty)}×</td>
+                    <td class="text-sm">${esc(r.products)}</td>
+                    <td style="text-align:center;">${paidBadge(r.paid)}</td>
+                </tr>`).join("");
+        }
+        return `
+            <div class="table-card-header">
+                <div style="display:flex; align-items:center; gap: 12px;">
+                    <h3>${esc(cat.name)}</h3>
+                    <span class="badge-count">${cat.count}</span>
+                </div>
+                <div style="font-size: 0.85rem; color: var(--gray-500);">${cat.total_qty} Stück gesamt</div>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 90px;">Bestellnr</th>
+                            <th style="width: 110px;">Datum</th>
+                            <th>Kunde</th>
+                            <th style="width: 70px; text-align:center;">Menge</th>
+                            <th>Produkte</th>
+                            <th style="width: 100px; text-align:center;">Bezahlt</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table>
+            </div>`;
+    }
+
+    // Königinnen: eine Zeile je Position mit Lieferdatum, chronologisch sortiert
+    function deliveryCardHtml(cat) {
+        let rowsHtml;
+        const isAuffahrt = cat.name === "Belegstellen-Auffahrt";
+        const termHeader = isAuffahrt ? "Termin" : "Lieferdatum";
+        const prodHeader = isAuffahrt ? "Belegstelle / Produkt" : "Sorte";
+        const sortText = isAuffahrt ? "nach Termin sortiert" : "nach Lieferdatum sortiert";
+        const termWidth = isAuffahrt ? 260 : 120;
+        if (!cat.rows || cat.rows.length === 0) {
+            rowsHtml = `<tr><td colspan="6" style="text-align:center; color: var(--gray-400); padding: 28px;">Keine Bestellungen in dieser Kategorie</td></tr>`;
+        } else {
+            rowsHtml = cat.rows.map((r) => `
+                <tr>
+                    <td class="mono text-bold" style="white-space:nowrap;">${r.lieferdatum ? esc(r.lieferdatum) : '<span style="color:var(--gray-400);">ohne Termin</span>'}</td>
+                    <td class="mono text-sm">${esc(r.order)}</td>
+                    <td class="text-sm">${esc(r.customer)}</td>
+                    <td class="mono text-sm" style="text-align:center;">${esc(r.qty)}×</td>
+                    <td class="text-sm">${esc(r.sorte)}</td>
+                    <td style="text-align:center;">${paidBadge(r.paid)}</td>
+                </tr>`).join("");
+        }
+        return `
+            <div class="table-card-header">
+                <div style="display:flex; align-items:center; gap: 12px;">
+                    <h3>${esc(cat.name)}</h3>
+                    <span class="badge-count">${cat.count}</span>
+                </div>
+                <div style="font-size: 0.85rem; color: var(--gray-500);">${cat.total_qty} Stück gesamt · ${esc(sortText)}</div>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: ${termWidth}px;">${esc(termHeader)}</th>
+                            <th style="width: 90px;">Bestellnr</th>
+                            <th>Kunde</th>
+                            <th style="width: 70px; text-align:center;">Menge</th>
+                            <th>${esc(prodHeader)}</th>
+                            <th style="width: 100px; text-align:center;">Bezahlt</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table>
+            </div>`;
+    }
+
+    // Umlarvaktionen: nach Produkt (Aktion) gruppiert, je Aktion nach Uhrzeit sortiert
+    function groupedCardHtml(cat) {
+        let body;
+        if (!cat.groups || cat.groups.length === 0) {
+            body = `<div style="text-align:center; color: var(--gray-400); padding: 28px;">Keine Buchungen in dieser Kategorie</div>`;
+        } else {
+            body = cat.groups.map((g) => {
+                const slotRows = g.slots.map((s) => `
+                    <tr>
+                        <td class="mono text-bold" style="white-space:nowrap;">${esc(s.time)}</td>
+                        <td class="text-sm">${esc(s.customer)}</td>
+                        <td class="mono text-sm">${esc(s.order)}</td>
+                        <td class="mono text-sm" style="text-align:center;">${esc(s.qty)}×</td>
+                        <td style="text-align:center;">${paidBadge(s.paid)}</td>
+                    </tr>`).join("");
+                return `
+                    <div style="padding: 14px 16px 4px; border-top: 1px solid var(--gray-200); display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <strong style="color: var(--gray-800); font-weight:600;">${esc(g.product)}</strong>
+                            <span class="badge-count">${g.count}</span>
+                        </div>
+                        <div style="font-size: 0.82rem; color: var(--gray-500);">${g.total_qty} Stück</div>
+                    </div>
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style="width: 120px;">Uhrzeit</th>
+                                    <th>Kunde</th>
+                                    <th style="width: 90px;">Bestellnr</th>
+                                    <th style="width: 70px; text-align:center;">Menge</th>
+                                    <th style="width: 100px; text-align:center;">Bezahlt</th>
+                                </tr>
+                            </thead>
+                            <tbody>${slotRows}</tbody>
+                        </table>
+                    </div>`;
+            }).join("");
+        }
+        return `
+            <div class="table-card-header">
+                <div style="display:flex; align-items:center; gap: 12px;">
+                    <h3>${esc(cat.name)}</h3>
+                    <span class="badge-count">${cat.count}</span>
+                </div>
+                <div style="font-size: 0.85rem; color: var(--gray-500);">${cat.total_qty} Stück gesamt · nach Aktion gruppiert, nach Uhrzeit sortiert</div>
+            </div>
+            ${body}`;
+    }
+
+    function renderCategories(categories, orderCount) {
+        resultsContainer.innerHTML = "";
+        categories.forEach((cat) => {
+            const card = document.createElement("div");
+            card.className = "table-card";
+            card.style.marginBottom = "20px";
+            if (cat.mode === "grouped") {
+                card.innerHTML = groupedCardHtml(cat);
+            } else if (cat.mode === "delivery") {
+                card.innerHTML = deliveryCardHtml(cat);
+            } else {
+                card.innerHTML = flatCardHtml(cat);
+            }
+            resultsContainer.appendChild(card);
+        });
+    }
+
+    // Lädt die Kategorien aus dem lokalen Bestand.
+    function loadCategories() {
+        setStatus("Lade Kategorien aus lokalem Bestand…");
+        return fetch("/api/imkerei/categories")
+            .then((res) => res.json())
+            .then((data) => {
+                if (data.error) { setStatus(""); alert("Fehler: " + data.error); return; }
+                const hasData = data.order_count > 0;
+                storeStatus.innerHTML = hasData
+                    ? `<strong>${data.order_count}</strong> Bestellung(en) lokal · Letztes Update: ${fmtUpdate(data.last_update)}`
+                    : `Noch keine lokalen Daten. Klicke auf „Aktualisieren".`;
+                if (!hasData) {
+                    resultsContainer.innerHTML = "";
+                    topbarActions.style.display = "none";
+                    emptyState.style.display = "";
+                    setStatus("");
+                    return;
+                }
+                renderCategories(data.categories, data.order_count);
+                const totalRows = data.categories.reduce((a, c) => a + c.count, 0);
+                setStatus(`${data.order_count} Bestellung(en) · ${totalRows} Einträge in den Kategorien.`);
+                topbarActions.style.display = totalRows > 0 ? "" : "none";
+                emptyState.style.display = "none";
+            })
+            .catch((err) => { console.error(err); setStatus("Verbindungsfehler beim Laden der lokalen Daten."); });
+    }
+
+    // "Aktualisieren": inkrementelles Update (geteilt mit der Rechnungsseite), dann Kategorien neu laden.
+    btnUpdate.addEventListener("click", function () {
+        const original = btnUpdate.textContent;
+
+        function runUpdate(body) {
+            btnUpdate.disabled = true;
+            btnUpdate.textContent = "Aktualisiere…";
+            storeStatus.textContent = "Hole Daten von Shopify…";
+            return fetch("/api/orders/update", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body || {}),
+            }).then((res) => res.json().then((d) => ({ ok: res.ok, d })));
+        }
+
+        runUpdate({}).then(({ ok, d }) => {
+            // Leerer Bestand: Startdatum für Erstbefüllung erfragen und erneut versuchen.
+            if (!ok && d.needs_initial) {
+                const def = `${new Date().getFullYear()}-01-01`;
+                const start = prompt("Erstbefüllung: ab welchem Datum importieren? (JJJJ-MM-TT)", def);
+                if (!start) { btnUpdate.disabled = false; btnUpdate.textContent = original; loadCategories(); return null; }
+                return runUpdate({ start_date: start });
+            }
+            return { ok, d };
+        }).then((result) => {
+            if (!result) return;  // abgebrochen
+            const { ok, d } = result;
+            btnUpdate.disabled = false;
+            btnUpdate.textContent = original;
+            if (!ok || d.error) { alert("Fehler beim Aktualisieren: " + (d.error || "unbekannt")); loadCategories(); return; }
+            loadCategories().then(() => {
+                storeStatus.innerHTML += ` &nbsp;·&nbsp; <span style="color:var(--honey-700); font-weight:600;">${d.new} neu, ${d.updated} aktualisiert</span>`;
+            });
+        }).catch((err) => {
+            btnUpdate.disabled = false;
+            btnUpdate.textContent = original;
+            console.error(err);
+            alert("Verbindungsfehler beim Aktualisieren.");
+        });
+    });
+
+    btnExport.addEventListener("click", function () {
+        btnExport.disabled = true;
+        const original = btnExport.textContent;
+        btnExport.textContent = "Erstelle ZIP...";
+        fetch("/api/imkerei/export")
+            .then((res) => {
+                if (!res.ok) return res.json().then((d) => { throw new Error(d.error || "Export fehlgeschlagen"); });
+                return res.blob();
+            })
+            .then((blob) => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `Imkerei_Listen_${new Date().toISOString().substring(0, 10)}.zip`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+            })
+            .catch((err) => alert("Fehler beim CSV-Export: " + err.message))
+            .finally(() => {
+                btnExport.disabled = false;
+                btnExport.textContent = original;
+            });
+    });
+
+    // Beim Öffnen aus dem lokalen Bestand laden
+    loadCategories();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anmelden — Rechnungsverwaltung</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --honey-500: #FFCC00;
+            --honey-600: #E6B800;
+            --honey-700: #CC9900;
+            --honey-300: #FFE066;
+            --honey-100: #FFF8E1;
+            --dark-900: #1A1714;
+            --dark-800: #231F20;
+            --gray-900: #1A1A1A;
+            --gray-700: #4A4A4A;
+            --gray-600: #666666;
+            --gray-400: #999999;
+            --gray-300: #D5CFC8;
+            --gray-200: #E4DFD8;
+            --gray-100: #F2EDE7;
+            --gray-50: #F9F6F2;
+            --white: #FFFFFF;
+            --green-600: #26A269;
+            --green-100: #DFF6E4;
+            --red-600: #C01C28;
+            --red-100: #F8D7DA;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Ubuntu', 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, var(--dark-900), var(--dark-800));
+            min-height: 100vh;
+            display: flex; align-items: center; justify-content: center;
+            padding: 20px;
+        }
+        .login-card {
+            background: var(--white);
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            width: 100%; max-width: 400px;
+            overflow: hidden;
+        }
+        .login-header {
+            background: var(--gray-50);
+            padding: 28px 32px 20px;
+            text-align: center;
+            border-bottom: 1px solid var(--gray-200);
+        }
+        .login-logo {
+            width: 64px; height: 64px;
+            border-radius: 10px;
+            object-fit: contain;
+            margin-bottom: 12px;
+        }
+        .login-header h1 {
+            font-size: 1.1rem; font-weight: 500; color: var(--gray-700);
+        }
+        .login-header h2 {
+            font-size: 0.82rem; font-weight: 400; color: var(--gray-400);
+            margin-top: 4px;
+        }
+        .login-body { padding: 28px 32px; }
+        .form-group { margin-bottom: 16px; }
+        .form-label {
+            display: block;
+            font-size: 0.78rem; font-weight: 500;
+            color: var(--gray-600);
+            text-transform: uppercase; letter-spacing: 0.03em;
+            margin-bottom: 6px;
+        }
+        .form-input {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid var(--gray-300);
+            border-radius: 8px; font-size: 0.92rem;
+            font-family: 'Ubuntu', sans-serif;
+            color: var(--gray-900); background: var(--white);
+            outline: none; transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .form-input:focus {
+            border-color: var(--honey-500);
+            box-shadow: 0 0 0 3px rgba(255,204,0,0.2);
+        }
+        .btn-login {
+            width: 100%;
+            padding: 12px;
+            background: var(--honey-600); color: var(--dark-900);
+            border: none; border-radius: 8px;
+            font-size: 0.95rem; font-weight: 600;
+            font-family: 'Ubuntu', sans-serif;
+            cursor: pointer; transition: background 0.15s;
+            margin-top: 8px;
+        }
+        .btn-login:hover { background: var(--honey-700); }
+        .flash {
+            padding: 10px 16px; border-radius: 8px;
+            font-size: 0.85rem; margin-bottom: 16px;
+        }
+        .flash-success { background: var(--green-100); color: var(--green-600); border: 1px solid #A3CFBB; }
+        .flash-error { background: var(--red-100); color: var(--red-600); border: 1px solid #F1AEB5; }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="login-header">
+            <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="login-logo">
+            <h1>Rechnungsverwaltung</h1>
+            <h2>OÖ Landesverband für Bienenzucht</h2>
+        </div>
+        <div class="login-body">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="flash flash-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+            {% endwith %}
+
+            <form method="POST">
+                <div class="form-group">
+                    <label class="form-label">Benutzername</label>
+                    <input type="text" name="username" class="form-input" required autofocus>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Passwort</label>
+                    <input type="password" name="password" class="form-input" required>
+                </div>
+                <button type="submit" class="btn-login">Anmelden</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>
